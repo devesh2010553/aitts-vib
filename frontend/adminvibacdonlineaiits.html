@@ -236,10 +236,17 @@ textarea{resize:vertical}
       </div>
       <div id="admin-tests-list"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
       <div class="del-results-card">
-        <div class="fc-title" style="color:var(--red);margin-bottom:12px"><i class="fas fa-trash-alt"></i> Delete Test Results <span style="font-weight:400;text-transform:none;font-size:11px;color:var(--text-muted)">(leaderboard archived automatically before deletion)</span></div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-          <div class="fg" style="flex:1;min-width:180px;margin:0"><label>Select Test</label><select id="del-test-sel"><option value=""> Select a test </option></select></div>
-          <div class="fg" style="margin:0"><label>Batch</label>
+        <div class="fc-title" style="color:var(--red);margin-bottom:4px"><i class="fas fa-database"></i> Manage Test Results</div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Select a test and batch, then choose which type of deletion you need.</p>
+
+        <!-- Selectors shared by both buttons -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+          <div class="fg" style="flex:1;min-width:180px;margin:0">
+            <label>Select Test</label>
+            <select id="del-test-sel"><option value=""> Select a test </option></select>
+          </div>
+          <div class="fg" style="margin:0">
+            <label>Batch</label>
             <select id="del-batch-sel" style="width:130px">
               <option value="all">All Batches</option>
               <option value="11">Class 11</option>
@@ -247,9 +254,36 @@ textarea{resize:vertical}
               <option value="dropper">Dropper</option>
             </select>
           </div>
-          <button class="btn btn-red btn-sm" onclick="deleteTestResults()"><i class="fas fa-trash"></i> Delete</button>
         </div>
-        <p style="font-size:11px;color:var(--text-muted);margin-top:8px"><i class="fas fa-info-circle"></i> Results deleted permanently. Leaderboard snapshot saved first  rankings remain visible.</p>
+
+        <!-- Button 1: MongoDB only -->
+        <div style="background:#fff8f0;border:1.5px solid #f0c040;border-radius:8px;padding:12px 14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div>
+              <p style="font-weight:700;font-size:13px;color:#b7791f;margin-bottom:2px"><i class="fas fa-archive"></i> Archive + Free MongoDB Space</p>
+              <p style="font-size:11px;color:#888;margin:0">Moves Sheet rows to <strong>AIITS_Archive</strong> sheet (frees Sheet row limit) AND deletes from MongoDB. Data fully preserved in archive. <strong>Use this regularly to keep both limits under control.</strong></p>
+            </div>
+            <button class="btn btn-gold btn-sm" onclick="deleteMongoResultsOnly()"><i class="fas fa-database"></i> Free MongoDB Space</button>
+          </div>
+        </div>
+
+        <!-- Button 2: Full permanent delete (original) -->
+        <div style="background:#fff8f8;border:1.5px solid rgba(197,48,48,0.35);border-radius:8px;padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div>
+              <p style="font-weight:700;font-size:13px;color:#c53030;margin-bottom:2px"><i class="fas fa-archive"></i> Archive + Full Cleanup</p>
+              <p style="font-size:11px;color:#888;margin:0">Also moves Sheet rows to <strong>AIITS_Archive</strong> AND deletes from MongoDB. Same as above but intended for full test cleanup. Both buttons archive — neither loses data permanently. <strong>Use when closing/retiring a test.</strong></p>
+            </div>
+            <button class="btn btn-red btn-sm" onclick="deleteTestResults()"><i class="fas fa-trash"></i> Delete Permanently</button>
+          </div>
+        </div>
+
+        <!-- Sheet Leaderboard Viewer -->
+        <div style="margin-top:12px">
+          <button class="btn btn-outline btn-sm" onclick="loadSheetLeaderboard()" style="font-size:12px"><i class="fas fa-table"></i> View Archived Leaderboard (AIITS_Archive)</button>
+          <p style="font-size:11px;color:#888;margin-top:4px">Reads from the AIITS_Archive Google Sheet — available after either delete button is used.</p>
+          <div id="sheet-lb-result" style="margin-top:8px"></div>
+        </div>
       </div>
     </div>
 
@@ -555,6 +589,42 @@ function loadDelTestSelect(){
     sel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t._id+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
   }).catch(function(){});
 }
+function deleteMongoResultsOnly(){
+  var sel=document.getElementById('del-test-sel');
+  var bSel=document.getElementById('del-batch-sel');
+  var testId=sel&&sel.value;var batch=(bSel&&bSel.value)||'all';
+  if(!testId){toast('Select a test first','error');return;}
+  var testName=sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].text||'';
+  var bLabel={'all':'all batches','11':'Class 11','12':'Class 12','dropper':'Dropper'}[batch]||batch;
+  if(!confirm('Delete MongoDB results for "'+testName+'" ('+bLabel+')? Google Sheet data stays safe.'))return;
+  api('/api/admin/tests/'+testId+'/results-only?batch='+batch,{method:'DELETE'}).then(function(r){
+    toast(r.deleted+' results removed from MongoDB. '+r.archived+' rows moved to AIITS_Archive.','success');
+    loadAdminStats();
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+function loadSheetLeaderboard(){
+  var sel=document.getElementById('del-test-sel');
+  var bSel=document.getElementById('del-batch-sel');
+  var testId=sel&&sel.value;
+  var batch=(bSel&&bSel.value)||'all';
+  if(!testId){toast('Select a test first','error');return;}
+  var box=document.getElementById('sheet-lb-result');
+  if(!box)return;
+  box.innerHTML='<p style="color:#888;font-size:12px">Loading from AIITS_Archive sheet...</p>';
+  api('/api/admin/tests/'+testId+'/sheet-leaderboard?batch='+batch).then(function(data){
+    if(!data.length){box.innerHTML='<p style="color:#888;font-size:12px">No results found in Sheet for this test.</p>';return;}
+    var bMap={'11':'Class 11','12':'Class 12','dropper':'Dropper'};
+    box.innerHTML='<p style="font-size:11px;color:#888;margin-bottom:6px">Showing '+data.length+' results from Google Sheet:</p>'+
+      '<div style="overflow-x:auto"><table class="data-table" style="font-size:12px">'+
+      '<thead><tr><th>Rank</th><th>Name</th><th>Batch</th><th>Marks</th><th>%</th><th>Time</th><th>Submitted</th></tr></thead>'+
+      '<tbody>'+data.map(function(r){
+        var mins=Math.floor((r.timeTaken||0)/60),secs=((r.timeTaken||0)%60).toString().padStart(2,'0');
+        return '<tr><td>'+r.rank+'</td><td>'+esc(r.userName)+'</td><td>'+(bMap[r.batch]||r.batch||'--')+'</td><td>'+r.obtainedMarks+'/'+r.totalMarks+'</td><td>'+r.percentage+'%</td><td>'+mins+'m'+secs+'s</td><td style="font-size:10px">'+esc(r.submittedAt||'')+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }).catch(function(err){box.innerHTML='<p style="color:#c53030;font-size:12px">'+esc(err.message)+'</p>';});
+}
+
 function deleteTestResults(){
   var sel=document.getElementById('del-test-sel');
   var bSel=document.getElementById('del-batch-sel');

@@ -100,6 +100,224 @@ exports.readUserResults = async function(userId) {
   } catch(err) { console.error('[SHEETS] readUserResults:', err.message); return []; }
 };
 
+
+// Read results from sheet for leaderboard (used when MongoDB results are cleared)
+exports.readResultsFromSheet = async function(testId) {
+  try {
+    const c = gc();
+    const r = await c.spreadsheets.values.get({ spreadsheetId: MAIN_SHEET_ID, range: 'Results!A:T' });
+    const rows = r.data.values || [];
+    if (rows.length < 2) return [];
+    const headers = rows[0];
+    const idx = {
+      studentName: headers.indexOf('StudentName'),
+      email:       headers.indexOf('Email'),
+      batch:       headers.indexOf('Batch'),
+      coaching:    headers.indexOf('CoachingName'),
+      obtained:    headers.indexOf('ObtainedMarks'),
+      total:       headers.indexOf('TotalMarks'),
+      time:        headers.indexOf('TimeSecs'),
+      submitted:   headers.indexOf('SubmittedAt'),
+      testId:      headers.indexOf('TestID'),
+    };
+    return rows.slice(1)
+      .filter(row => !testId || row[idx.testId] === testId)
+      .map(row => ({
+        userName:     row[idx.studentName] || '',
+        userEmail:    row[idx.email]       || '',
+        batch:        row[idx.batch]       || '',
+        coachingName: row[idx.coaching]    || '',
+        obtainedMarks:parseFloat(row[idx.obtained]) || 0,
+        totalMarks:   parseFloat(row[idx.total])    || 0,
+        timeTaken:    parseInt(row[idx.time])        || 0,
+        submittedAt:  row[idx.submitted]             || '',
+        testId:       row[idx.testId]                || '',
+        fromSheet:    true,
+      }));
+  } catch(err) {
+    console.error('[SHEETS] readResultsFromSheet:', err.message);
+    return [];
+  }
+};
+
+
+// Archive rows for a specific test from Main Sheet → AIITS_Archive sheet,
+// then delete those rows from the Main Sheet (frees row limit).
+// Called by both delete buttons so neither accumulates rows in the main sheet.
+exports.archiveTestResults = async function(testId, batch) {
+  try {
+    const c = gc();
+
+    // 1. Read ALL rows from main Results tab
+    const res = await c.spreadsheets.values.get({ spreadsheetId: MAIN_SHEET_ID, range: 'Results!A:T' });
+    const allRows = res.data.values || [];
+    if (allRows.length < 2) return { archived: 0 };
+
+    const headers = allRows[0];
+    const TEST_ID_COL = headers.indexOf('TestID');  // col 18
+    const BATCH_COL   = headers.indexOf('Batch');   // col 4
+
+    // 2. Separate rows: matching testId (and optionally batch) vs rest
+    const toArchive = [];
+    const toKeep    = [];
+    for (let i = 1; i < allRows.length; i++) {
+      const row = allRows[i];
+      const rowTestId = row[TEST_ID_COL] || '';
+      const rowBatch  = row[BATCH_COL]   || '';
+      const matchTest  = rowTestId === String(testId);
+      const matchBatch = !batch || batch === 'all' || rowBatch === batch;
+      if (matchTest && matchBatch) {
+        toArchive.push(row);
+      } else {
+        toKeep.push(row);
+      }
+    }
+
+    if (!toArchive.length) return { archived: 0 };
+
+    // 3. Get or create AIITS_Archive spreadsheet
+    const d = gd();
+    let archiveId;
+    const search = await d.files.list({
+      q: "name='AIITS_Archive' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+      fields: 'files(id)'
+    });
+    if (search.data.files && search.data.files.length) {
+      archiveId = search.data.files[0].id;
+    } else {
+      const cr = await d.files.create({
+        resource: { name: 'AIITS_Archive', mimeType: 'application/vnd.google-apps.spreadsheet' },
+        fields: 'id'
+      });
+      archiveId = cr.data.id;
+      if (process.env.ADMIN_EMAIL) {
+        await d.permissions.create({
+          fileId: archiveId,
+          resource: { type: 'user', role: 'writer', emailAddress: process.env.ADMIN_EMAIL }
+        }).catch(() => {});
+      }
+    }
+
+    // 4. Write archived rows to AIITS_Archive
+    const ac = gc();
+    await initTab(ac, archiveId, 'Results', RESULTS_HEADERS);
+    await ac.spreadsheets.values.append({
+      spreadsheetId: archiveId,
+      range: 'Results!A:T',
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      resource: { values: toArchive }
+    });
+
+    // 5. Rewrite main sheet Results tab with only the kept rows
+    //    (clear everything after header, then write kept rows back)
+    const meta = await c.spreadsheets.get({ spreadsheetId: MAIN_SHEET_ID });
+    const rs   = meta.data.sheets.find(s => s.properties.title === 'Results');
+    if (rs) {
+      const sheetId = rs.properties.sheetId;
+      const totalRows = allRows.length; // includes header
+
+      if (totalRows > 1) {
+        // Clear data rows (keep header row 0)
+        await c.spreadsheets.batchUpdate({
+          spreadsheetId: MAIN_SHEET_ID,
+          resource: {
+            requests: [{
+              deleteDimension: {
+                range: {
+                  sheetId: sheetId,
+                  dimension: 'ROWS',
+                  startIndex: 1,           // after header
+                  endIndex: totalRows      // all data rows
+                }
+              }
+            }]
+          }
+        });
+      }
+
+      // Write back the rows we want to keep
+      if (toKeep.length) {
+        await c.spreadsheets.values.append({
+          spreadsheetId: MAIN_SHEET_ID,
+          range: 'Results!A:T',
+          valueInputOption: 'RAW',
+          insertDataOption: 'INSERT_ROWS',
+          resource: { values: toKeep }
+        });
+      }
+    }
+
+    console.log('[SHEETS] archiveTestResults: archived', toArchive.length, 'rows for test', testId);
+    return { archived: toArchive.length, archiveId };
+  } catch(err) {
+    console.error('[SHEETS] archiveTestResults:', err.message);
+    throw err;
+  }
+};
+
+// Read archived results for a specific test from AIITS_Archive
+// Used for showing leaderboard after MongoDB results are cleared
+exports.readArchivedResults = async function(testId, batch) {
+  try {
+    const d = gd();
+    const search = await d.files.list({
+      q: "name='AIITS_Archive' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false",
+      fields: 'files(id)'
+    });
+    if (!search.data.files || !search.data.files.length) return [];
+    const archiveId = search.data.files[0].id;
+
+    const c = gc();
+    const res = await c.spreadsheets.values.get({ spreadsheetId: archiveId, range: 'Results!A:T' });
+    const rows = res.data.values || [];
+    if (rows.length < 2) return [];
+
+    const h = rows[0];
+    const I = {
+      name:     h.indexOf('StudentName'),
+      email:    h.indexOf('Email'),
+      batch:    h.indexOf('Batch'),
+      coaching: h.indexOf('CoachingName'),
+      obtained: h.indexOf('ObtainedMarks'),
+      total:    h.indexOf('TotalMarks'),
+      pct:      h.indexOf('Percentage'),
+      time:     h.indexOf('TimeSecs'),
+      date:     h.indexOf('SubmittedAt'),
+      testId:   h.indexOf('TestID'),
+      userId:   h.indexOf('UserID'),
+      rank:     h.indexOf('OverallRank'),
+      batchRank:h.indexOf('BatchRank'),
+    };
+
+    return rows.slice(1)
+      .filter(r => {
+        const tMatch = !testId || r[I.testId] === String(testId);
+        const bMatch = !batch || batch === 'all' || r[I.batch] === batch;
+        return tMatch && bMatch;
+      })
+      .map(r => ({
+        userName:     r[I.name]     || '',
+        userEmail:    r[I.email]    || '',
+        batch:        r[I.batch]    || '',
+        coachingName: r[I.coaching] || '',
+        obtainedMarks:parseFloat(r[I.obtained]) || 0,
+        totalMarks:   parseFloat(r[I.total])    || 0,
+        percentage:   parseFloat(r[I.pct])      || 0,
+        timeTaken:    parseInt(r[I.time])        || 0,
+        submittedAt:  r[I.date]    || '',
+        testId:       r[I.testId]  || '',
+        userId:       r[I.userId]  || '',
+        rank:         parseInt(r[I.rank])     || null,
+        batchRank:    parseInt(r[I.batchRank])|| null,
+        fromArchive:  true,
+      }));
+  } catch(err) {
+    console.error('[SHEETS] readArchivedResults:', err.message);
+    return [];
+  }
+};
+
 exports.getSheetStats = async function() {
   try {
     const c = gc();

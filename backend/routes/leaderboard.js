@@ -13,6 +13,7 @@
 const express     = require('express');
 const router      = express.Router();
 const Result      = require('../models/Result');
+const Test        = require('../models/Test');
 const UserProfile = require('../models/UserProfile');
 const { authenticateStudent } = require('../middleware/auth');
 
@@ -100,6 +101,68 @@ router.get('/overall', authenticateStudent, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── 2b. Class leaderboard (cumulative avg %, penalises skipped tests) ─────
+// Rank = (sum of each attempted test's %) / (total tests published for this class)
+// A student who skips a test is scored 0% for it — rewards consistency over
+// a single lucky 100%. Also returns the list of tests for that class so the
+// UI can offer a per-test dropdown.
+router.get('/class', authenticateStudent, async (req, res) => {
+  try {
+    const { batch } = req.query;
+    if (!['11', '12', 'dropper'].includes(batch)) {
+      return res.status(400).json({ error: 'Valid batch (11, 12, dropper) required' });
+    }
+
+    // Tests targeting this batch (empty targetBatches = all batches)
+    const tests = await Test.find({
+      isPublished: true,
+      $or: [{ targetBatches: { $size: 0 } }, { targetBatches: batch }]
+    }).select('_id title createdAt').sort({ createdAt: 1 });
+
+    const testIds = tests.map(t => t._id);
+    const totalTests = testIds.length;
+
+    let rows = [];
+    if (totalTests > 0) {
+      rows = await Result.aggregate([
+        { $match: { testId: { $in: testIds }, batch, inProgress: false } },
+        { $group: {
+            _id:           '$userId',
+            userName:      { $last: '$userName' },
+            coachingName:  { $last: '$coachingName' },
+            testsTaken:    { $sum: 1 },
+            sumPercentage: { $sum: { $cond: [{ $gt: ['$totalMarks', 0] }, { $multiply: [{ $divide: ['$obtainedMarks', '$totalMarks'] }, 100] }, 0] } },
+            totalObtained: { $sum: '$obtainedMarks' },
+            totalPossible: { $sum: '$totalMarks' },
+            totalTime:     { $sum: '$timeTaken' },
+        }},
+      ]);
+    }
+
+    const sorted = rows
+      .map(r => ({ ...r, avgPercentage: totalTests > 0 ? r.sumPercentage / totalTests : 0 }))
+      .sort((a, b) => b.avgPercentage - a.avgPercentage || a.totalTime - b.totalTime)
+      .map((r, i) => ({
+        rank:          i + 1,
+        name:          r.userName     || 'Unknown',
+        coachingName:  r.coachingName || '--',
+        testsTaken:    r.testsTaken,
+        totalTests,
+        totalObtained: r.totalObtained,
+        totalPossible: r.totalPossible,
+        avgPercentage: r.avgPercentage.toFixed(2),
+        totalTime:     r.totalTime,
+      }));
+
+    res.json({
+      batch,
+      totalTests,
+      tests: tests.map(t => ({ _id: t._id, title: t.title })),
+      leaderboard: sorted,
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── 3. Normalised cross-batch leaderboard ─────────────────────────────────
 // Same as overall but always includes ALL batches, sorted by percentage
 router.get('/normalised', authenticateStudent, async (req, res) => {
@@ -137,6 +200,23 @@ router.get('/normalised', authenticateStudent, async (req, res) => {
 
     res.json(sorted);
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+
+// GET student's own archived results (after MongoDB cleared)
+router.get('/archived/:userId', authenticateStudent, async (req, res) => {
+  try {
+    // Students can only read their own archive
+    if (String(req.user._id) !== req.params.userId && req.params.userId !== 'me') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { readArchivedResults } = require('../utils/sheets');
+    // Pass no testId to get all results for this user from archive
+    const allRows = await readArchivedResults(null, null);
+    const userId  = String(req.user._id);
+    const myRows  = allRows.filter(r => r.userId === userId);
+    res.json(myRows.sort((a,b) => new Date(b.submittedAt) - new Date(a.submittedAt)));
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

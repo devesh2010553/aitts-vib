@@ -563,7 +563,12 @@ textarea{resize:vertical}
         <button class="bfbtn" onclick="loadNewLeaderboard('12')" id="lbf-122">Class 12</button>
         <button class="bfbtn" onclick="loadNewLeaderboard('dropper')" id="lbf-dropper2">Dropper</button>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px"><i class="fas fa-info-circle"></i> Ranked by: (marks obtained ÷ total marks) × 100. Ties broken by time taken.</p>
+      <div id="lb-test-select-wrap" style="display:none;margin-bottom:8px">
+        <select id="lb-test-select" onchange="onLbTestSelect(this.value)" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border,#ddd)">
+          <option value="">Cumulative (avg % across all tests)</option>
+        </select>
+      </div>
+      <p id="lb-rule-note" style="font-size:12px;color:var(--text-muted);margin-bottom:8px"><i class="fas fa-info-circle"></i> Ranked by: (marks obtained ÷ total marks) × 100. Ties broken by time taken.</p>
       <div id="leaderboard-table"></div>
     </div>
     <!-- GALLERY TAB -->
@@ -1607,36 +1612,89 @@ function savePassword(){
 
 
 // ── Leaderboard ──────────────────────────────────────────────────────────────
-var lbMode='overall', lbBatch='';
+var lbMode='overall', lbBatch='', lbClassData=null;
+function medalName(i,name){var medal=['🥇','🥈','🥉'];return (medal[i]||'')+' '+esc(name);}
+function fmtTime(t){var mins=Math.floor((t||0)/60),secs=((t||0)%60).toString().padStart(2,'0');return mins+'m '+secs+'s';}
+function pctSpan(p){return '<span style="font-weight:700;color:'+(p>=80?'#276749':p>=50?'#d97706':'#c53030')+'">'+p+'%</span>';}
+
 function setLbMode(mode){
   lbMode=mode;
   ['overall','normalised'].forEach(function(m){var el=document.getElementById('lbm-'+m);if(el)el.classList.toggle('active',m===mode);});
-  var bf=document.getElementById('lb-batch-filter');
-  if(bf)bf.style.display=mode==='normalised'?'none':'flex';
-  lbBatch='';
-  ['all2','112','122','dropper2'].forEach(function(id){var el=document.getElementById('lbf-'+id);if(el)el.classList.toggle('active',id==='all2');});
-  loadNewLeaderboard();
+  loadNewLeaderboard(lbBatch);
 }
+
 function loadNewLeaderboard(batch){
   if(batch!==undefined)lbBatch=batch;
   ['all2','112','122','dropper2'].forEach(function(id){
     var b=id==='all2'?'':id==='dropper2'?'dropper':id.replace('2','');
     var el=document.getElementById('lbf-'+id);if(el)el.classList.toggle('active',b===lbBatch);
   });
+  var modeRow=document.getElementById('lbm-overall');
+  if(modeRow&&modeRow.parentElement)modeRow.parentElement.style.display=lbBatch?'none':'flex';
+  var testWrap=document.getElementById('lb-test-select-wrap');
+
+  if(lbBatch){
+    // Specific class: cumulative avg% (divided by TOTAL tests for the class) with per-test dropdown
+    if(testWrap)testWrap.style.display='block';
+    loadClassLeaderboard(lbBatch);
+  } else {
+    // "All": legacy cross-batch views
+    if(testWrap)testWrap.style.display='none';
+    var c=document.getElementById('leaderboard-table');if(!c)return;
+    c.innerHTML='<div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px"></div>';
+    var url=lbMode==='normalised'?'/api/leaderboard/normalised':'/api/leaderboard/overall?batch=';
+    var note=document.getElementById('lb-rule-note');if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: (marks obtained ÷ total marks) × 100. Ties broken by time taken.';
+    api(url).then(function(data){
+      if(!data.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
+      c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr>'+(lbMode==='normalised'?'<th>Rank</th><th>Name</th><th>Batch</th><th>Tests</th><th>Score%</th><th>Time</th>':'<th>Rank</th><th>Name</th><th>Batch</th><th>Tests</th><th>Score%</th><th>Total Marks</th><th>Time</th>')+'</tr></thead><tbody>'+
+        data.map(function(u,i){
+          var cls=i<3?'rank-'+(i+1):'';
+          return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td><td>'+esc(u.batch||'--')+'</td><td>'+u.testCount+'</td><td>'+pctSpan(u.percentage)+'</td>'+(lbMode==='overall'?'<td>'+u.totalObtained+'/'+u.totalPossible+'</td>':'')+'<td>'+fmtTime(u.totalTime)+'</td></tr>';
+        }).join('')+'</tbody></table></div>';
+    }).catch(function(e){c.innerHTML='<p style="color:var(--red)">'+esc(e.message)+'</p>';});
+  }
+}
+
+function loadClassLeaderboard(batch){
   var c=document.getElementById('leaderboard-table');if(!c)return;
   c.innerHTML='<div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px"></div>';
-  var url=lbMode==='normalised'?'/api/leaderboard/normalised':'/api/leaderboard/overall?batch='+lbBatch;
-  api(url).then(function(data){
-    if(!data.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
-    var medal=['🥇','🥈','🥉'];
-    c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr>'+(lbMode==='normalised'?'<th>Rank</th><th>Name</th><th>Batch</th><th>Tests</th><th>Score%</th><th>Time</th>':'<th>Rank</th><th>Name</th><th>Batch</th><th>Tests</th><th>Score%</th><th>Total Marks</th><th>Time</th>')+'</tr></thead><tbody>'+
-      data.map(function(u,i){
+  api('/api/leaderboard/class?batch='+batch).then(function(data){
+    lbClassData=data;
+    var sel=document.getElementById('lb-test-select');
+    if(sel){
+      sel.innerHTML='<option value="">Cumulative (avg % across all '+data.totalTests+' test'+(data.totalTests===1?'':'s')+')</option>'+
+        (data.tests||[]).map(function(t){return '<option value="'+t._id+'">'+esc(t.title)+'</option>';}).join('');
+      sel.value='';
+    }
+    renderClassCumulative(data);
+  }).catch(function(e){c.innerHTML='<p style="color:var(--red)">'+esc(e.message)+'</p>';});
+}
+
+function renderClassCumulative(data){
+  var c=document.getElementById('leaderboard-table');if(!c)return;
+  var note=document.getElementById('lb-rule-note');
+  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: sum of each attempted test\'s % ÷ total tests published for this class ('+data.totalTests+'). Skipping a test counts as 0% for it — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
+  if(!data.leaderboard.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
+  c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th><th>Tests Taken</th><th>Avg %</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
+    data.leaderboard.map(function(u,i){
+      var cls=i<3?'rank-'+(i+1):'';
+      return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td><td>'+u.testsTaken+'/'+data.totalTests+'</td><td>'+pctSpan(u.avgPercentage)+'</td><td>'+u.totalObtained+'/'+u.totalPossible+'</td><td>'+fmtTime(u.totalTime)+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+function onLbTestSelect(testId){
+  if(!testId){renderClassCumulative(lbClassData);return;}
+  var c=document.getElementById('leaderboard-table');if(!c)return;
+  c.innerHTML='<div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px"></div>';
+  var note=document.getElementById('lb-rule-note');
+  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: (marks obtained ÷ total marks) × 100 for this test. Ties broken by time taken.';
+  api('/api/leaderboard/test/'+testId+'?batch='+lbBatch).then(function(data){
+    var rows=data.rankings||[];
+    if(!rows.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No attempts yet.</p>';return;}
+    c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th><th>Score%</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
+      rows.map(function(u,i){
         var cls=i<3?'rank-'+(i+1):'';
-        var pct='<span style="font-weight:700;color:'+(u.percentage>=80?'#276749':u.percentage>=50?'#d97706':'#c53030')+'">'+u.percentage+'%</span>';
-        var mins=Math.floor((u.totalTime||0)/60),secs=((u.totalTime||0)%60).toString().padStart(2,'0');
-        var timeStr=mins+'m '+secs+'s';
-        var name=(medal[i]||'')+' '+esc(u.name);
-        return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+name+'</td><td>'+esc(u.batch||'--')+'</td><td>'+u.testCount+'</td><td>'+pct+'</td>'+(lbMode==='overall'?'<td>'+u.totalObtained+'/'+u.totalPossible+'</td>':'')+'<td>'+timeStr+'</td></tr>';
+        return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.userName)+'</td><td>'+pctSpan(u.percentage)+'</td><td>'+u.obtainedMarks+'/'+u.totalMarks+'</td><td>'+fmtTime(u.timeTaken)+'</td></tr>';
       }).join('')+'</tbody></table></div>';
   }).catch(function(e){c.innerHTML='<p style="color:var(--red)">'+esc(e.message)+'</p>';});
 }

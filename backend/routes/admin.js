@@ -68,17 +68,88 @@ router.delete('/tests/:id', async (req, res) => {
 });
 
 // Delete results for a test by batch
-router.delete('/tests/:id/results', async (req, res) => {
+// DELETE results from MongoDB + archive Sheet rows to AIITS_Archive
+// Frees both MongoDB space AND Sheet row limit. Data preserved in Archive sheet.
+router.delete('/tests/:id/results-only', async (req, res) => {
   try {
     const testId = req.params.id;
-    const batch  = req.query.batch;
+    const batch  = req.query.batch || 'all';
     const filter = { testId, inProgress: false };
     if (batch && batch !== 'all') filter.batch = batch;
 
+    // 1. Archive Sheet rows for this test → AIITS_Archive, then remove from main sheet
+    let archived = 0;
+    try {
+      const { archiveTestResults } = require('../utils/sheets');
+      const r = await archiveTestResults(testId, batch);
+      archived = r.archived;
+    } catch(e) {
+      console.error('[ADMIN] Sheet archive error (non-fatal):', e.message);
+    }
+
+    // 2. Delete from MongoDB
     const affected = await Result.find(filter).select('userId obtainedMarks');
     const userIds  = [...new Set(affected.map(r => String(r.userId)))];
+    const del      = await Result.deleteMany(filter);
 
-    const del = await Result.deleteMany(filter);
+    // 3. Recalculate UserProfile stats
+    for (const uid of userIds) {
+      const rem = await Result.find({ userId: uid, inProgress: false });
+      await UserProfile.findByIdAndUpdate(uid, {
+        totalTests:   rem.length,
+        totalMarks:   rem.reduce((s,r) => s+(r.obtainedMarks||0), 0),
+        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0
+      });
+    }
+
+    res.json({
+      deleted: del.deletedCount,
+      archived,
+      message: del.deletedCount + ' results removed from MongoDB. ' + archived + ' rows moved to Archive sheet.'
+    });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET leaderboard from AIITS_Archive sheet (used after results cleared from MongoDB)
+router.get('/tests/:id/sheet-leaderboard', async (req, res) => {
+  try {
+    const batch = req.query.batch || 'all';
+    const { readArchivedResults } = require('../utils/sheets');
+    const rows = await readArchivedResults(req.params.id, batch);
+    if (!rows.length) return res.json([]);
+
+    const sorted = rows.sort((a,b) => b.obtainedMarks - a.obtainedMarks || a.timeTaken - b.timeTaken);
+    const bMap = {'11':'Class 11','12':'Class 12','dropper':'Dropper'};
+    res.json(sorted.map((r,i) => ({
+      ...r,
+      rank: i+1,
+      batchLabel: bMap[r.batch] || r.batch,
+      percentage: r.totalMarks ? (r.obtainedMarks/r.totalMarks*100).toFixed(1) : r.percentage.toFixed(1)
+    })));
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/tests/:id/results', async (req, res) => {
+  try {
+    const testId = req.params.id;
+    const batch  = req.query.batch || 'all';
+    const filter = { testId, inProgress: false };
+    if (batch && batch !== 'all') filter.batch = batch;
+
+    // 1. Archive Sheet rows to AIITS_Archive AND remove from main sheet
+    let archived = 0;
+    try {
+      const { archiveTestResults } = require('../utils/sheets');
+      const r = await archiveTestResults(testId, batch);
+      archived = r.archived;
+    } catch(e) {
+      console.error('[ADMIN] Sheet archive error (non-fatal):', e.message);
+    }
+
+    // 2. Delete from MongoDB
+    const affected = await Result.find(filter).select('userId obtainedMarks');
+    const userIds  = [...new Set(affected.map(r => String(r.userId)))];
+    const del      = await Result.deleteMany(filter);
 
     for (const uid of userIds) {
       const rem = await Result.find({ userId: uid, inProgress: false });
@@ -90,7 +161,7 @@ router.delete('/tests/:id/results', async (req, res) => {
     }
     await Test.findByIdAndUpdate(testId, { attemptCount: await Result.countDocuments({ testId, inProgress: false }) });
 
-    res.json({ deleted: del.deletedCount, message: 'Results deleted from MongoDB' });
+    res.json({ deleted: del.deletedCount, archived, message: del.deletedCount + ' results deleted from MongoDB. ' + archived + ' rows archived to AIITS_Archive sheet.' });
   } catch(err) {
     console.error('[ADMIN] delete results:', err);
     res.status(500).json({ error: err.message });

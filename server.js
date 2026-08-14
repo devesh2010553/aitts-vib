@@ -7,6 +7,7 @@ if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON && !process.env.FIREBASE_SERVICE_
   process.exit(1);
 }
 if (!process.env.JWT_SECRET) { process.env.JWT_SECRET = require('crypto').randomBytes(64).toString('hex'); console.warn('[STARTUP] JWT_SECRET not set -- add to Render env!'); }
+if (!process.env.CLIENT_URL) { console.warn('[STARTUP] CLIENT_URL not set — CORS will reflect any request origin with credentials enabled. Set CLIENT_URL to your actual frontend URL.'); }
 
 const express      = require('express');
 const http         = require('http');
@@ -14,6 +15,7 @@ const { Server }   = require('socket.io');
 const mongoose     = require('mongoose');
 const cookieParser = require('cookie-parser');
 const cors         = require('cors');
+const compression  = require('compression');
 const path         = require('path');
 const rateLimit    = require('express-rate-limit');
 
@@ -22,13 +24,60 @@ const server = http.createServer(app);
 const io     = new Server(server, { cors:{ origin:process.env.CLIENT_URL||'*', credentials:true } });
 app.set('io', io);
 
+// The app sits behind exactly one reverse proxy in production (Render's edge
+// and/or a fronting Cloudflare hop) — trusting a SPECIFIC hop count (not
+// `true`, which would trust an arbitrary chain of forwarded-for headers) is
+// what makes req.ip and the rate limiters below reflect the real client
+// instead of the proxy. Without this, express-rate-limit keys on the proxy's
+// address and effectively rate-limits ALL students as a single client.
+// If the deployment topology changes (e.g. an additional proxy hop is added
+// in front), this number needs to change to match — verify by logging req.ip
+// against a known real client IP after deploying.
+app.set('trust proxy', 1);
+
 app.use((req,res,next) => { res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('X-XSS-Protection','1; mode=block'); next(); });
 app.use(cors({ origin:process.env.CLIENT_URL||true, credentials:true }));
-app.use(express.json({ limit:'20mb' }));
-app.use(express.urlencoded({ extended:true, limit:'20mb' }));
+app.use(compression()); // gzip/br for JSON+HTML responses; images/already-compressed types are excluded by its default filter
+// Admin test create/edit payloads legitimately carry base64 question/option
+// images and can run several MB — give ONLY that router the larger limit.
+// This must be mounted before the global parser below so it's the one that
+// actually consumes the body for /api/admin/* requests.
+app.use('/api/admin', express.json({ limit:'20mb' }), express.urlencoded({ extended:true, limit:'20mb' }));
+// Every other route is student/public-facing JSON (registration, save-progress,
+// submit, chat REST, etc.) — none of it needs more than a fraction of a MB.
+// Keeping this small closes off an easy memory-exhaustion vector on public
+// endpoints while leaving plenty of headroom for legitimate payloads.
+app.use(express.json({ limit:'1mb' }));
+app.use(express.urlencoded({ extended:true, limit:'1mb' }));
 app.use(cookieParser());
-app.use('/api/', rateLimit({ windowMs:15*60*1000, max:600 }));
-app.use('/api/auth/register',        rateLimit({ windowMs:60*60*1000, max:10 }));
+
+// General API rate limit. save-progress and submit are excluded here and
+// given their own, more generous, dedicated limiters below — both are
+// legitimately high-frequency (save-progress fires every ~10s per active
+// test-taker) and can see MANY real students sharing one IP behind a single
+// school/coaching-center network, so folding them into this tighter general
+// bucket would rate-limit real students, not abuse.
+app.use('/api/', rateLimit({
+  windowMs: 15*60*1000, max: 600,
+  skip: (req) => req.path.endsWith('/save-progress') || req.path === '/results/submit'
+}));
+app.use('/api/auth/register',    rateLimit({ windowMs:60*60*1000, max:10 }));
+// Admin login has no dedicated brute-force protection today beyond the
+// (now-excluded-from-nothing, still-applying) general bucket — add one
+// specifically, since it's the highest-value credential in the app.
+app.use('/api/auth/admin-login', rateLimit({ windowMs:15*60*1000, max:10 }));
+// save-progress: generous ceiling sized for many concurrent test-takers
+// sharing one IP (e.g. a whole coaching-center batch on one network), not
+// for a single client — legitimate traffic here is bounded by
+// (active test-takers behind that IP) × (test duration / 10s).
+app.use('/api/tests', rateLimit({
+  windowMs: 15*60*1000, max: 3000,
+  skip: (req) => !req.path.endsWith('/save-progress')
+}));
+// submit: same shared-NAT consideration — a real classroom submitting near a
+// deadline can look like a burst from one IP. Still meaningfully protective
+// against a single scripted abuser (a real student submits a given test once).
+app.use('/api/results/submit', rateLimit({ windowMs:15*60*1000, max:200 }));
 
 app.use(express.static(path.join(__dirname,'frontend'), {
   index: false,   // Do NOT serve index.html automatically — catch-all handles it with Firebase injection
@@ -105,16 +154,13 @@ app.get('*', async (req,res) => {
   res.send(html);
 });
 
-// In-memory chat state (persists until server restart)
-let chatMuted   = false;
-const blockedUids = new Set(); // blocked student UIDs
+const { isMuted, isBlocked, toggleMute, setBlocked } = require('./backend/utils/chatState');
 
 app.set('io', io);
-app.set('chatMuted', false);
 
 io.on('connection', socket => {
   // Send current mute state on connect
-  socket.emit('chat-mute-changed', { muted: chatMuted });
+  isMuted().then(muted => socket.emit('chat-mute-changed', { muted })).catch(() => {});
   socket.on('join-test',  id => socket.join('test-'+id));
   socket.on('leave-test', id => socket.leave('test-'+id));
   socket.on('join-admin', ()  => socket.join('admin-room'));
@@ -131,13 +177,29 @@ io.on('connection', socket => {
     } catch(e) { return false; }
   }
 
+  // Socket.IO events aren't covered by express-rate-limit (HTTP-only) — chat
+  // send had no abuse protection at all. This is deliberately per-connection,
+  // in-process state (not moved to Mongo like mute/block below): a given
+  // socket connection is only ever handled by the single worker process that
+  // accepted it, so there's no cross-worker consistency concern here the way
+  // there is for mute/block state, which every worker needs to agree on.
+  let lastMsgAt = 0;
+  const MIN_MSG_INTERVAL_MS = 1200;
+
   // Public chat
   socket.on('chat-message', async (data) => {
     const adminSender = data.isAdmin && isAdminSocket();
-    // Block if: global mute (non-admin) OR sender is individually blocked
-    if (chatMuted && !adminSender) return;
+    if (!adminSender) {
+      const now = Date.now();
+      if (now - lastMsgAt < MIN_MSG_INTERVAL_MS) return;
+      lastMsgAt = now;
+    }
     const uid = (data.uid || '').slice(0, 64);
-    if (blockedUids.has(uid) && !adminSender) return;
+    try {
+      // Block if: global mute (non-admin) OR sender is individually blocked
+      if (!adminSender && (await isMuted())) return;
+      if (!adminSender && (await isBlocked(uid))) return;
+    } catch (e) { console.error('[CHAT] moderation check failed:', e.message); return; }
     const msg = {
       name:    adminSender ? 'Admin' : (data.name || 'Student').slice(0, 40),
       uid:     adminSender ? '' : uid,
@@ -157,32 +219,41 @@ io.on('connection', socket => {
   });
 
   // Admin mute/unmute all (also broadcast so clients persist it)
-  socket.on('admin-toggle-mute', () => {
+  socket.on('admin-toggle-mute', async () => {
     if (!isAdminSocket()) return;
-    chatMuted = !chatMuted;
-    app.set('chatMuted', chatMuted);
-    io.emit('chat-mute-changed', { muted: chatMuted });
+    try {
+      const muted = await toggleMute();
+      io.emit('chat-mute-changed', { muted });
+    } catch(e) { console.error('[CHAT] toggle-mute failed:', e.message); }
   });
 
   // Admin block/unblock individual student
-  socket.on('admin-block-student', (data) => {
+  socket.on('admin-block-student', async (data) => {
     if (!isAdminSocket()) return;
     const uid = (data.uid || '').slice(0, 64);
     const name = (data.name || '').slice(0, 40);
-    if (data.blocked) {
-      blockedUids.add(uid);
-    } else {
-      blockedUids.delete(uid);
-    }
-    // Notify all clients to hide/show this student messages
-    io.emit('student-blocked', { uid, name, blocked: !!data.blocked });
+    try {
+      await setBlocked(uid, !!data.blocked);
+      // Notify all clients to hide/show this student messages
+      io.emit('student-blocked', { uid, name, blocked: !!data.blocked });
+    } catch(e) { console.error('[CHAT] block/unblock failed:', e.message); }
   });
 });
 
 const PORT = process.env.PORT||3000;
 server.listen(PORT,'0.0.0.0',() => console.log('[SERVER] AIITS on port',PORT));
-mongoose.connect(process.env.MONGODB_URI,{ serverSelectionTimeoutMS:15000 })
+// maxPoolSize: explicit rather than relying on the driver default (100) —
+// this app is a single Node process today, and 50 concurrent in-flight
+// queries is comfortably more than a single process's request handling needs
+// (queries are fast; connections return to the pool between awaits rather
+// than staying checked out for the life of a request). Revisit this only if
+// load testing shows connection-wait time, or if/when the app moves to
+// multiple worker processes (each worker gets its OWN pool of this size).
+mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS:15000, maxPoolSize:50 })
   .then(()=>console.log('[DB] MongoDB connected'))
   .catch(err=>console.error('[DB] MongoDB error:',err.message));
+mongoose.connection.on('error', err => console.error('[DB] Connection error:', err.message));
+mongoose.connection.on('disconnected', () => console.warn('[DB] Disconnected — driver will attempt to reconnect automatically'));
+mongoose.connection.on('reconnected', () => console.log('[DB] Reconnected'));
 require('./backend/config/chatDb'); // second connection, dedicated to chat storage (MONGODB_URI2)
 module.exports = { app, io };

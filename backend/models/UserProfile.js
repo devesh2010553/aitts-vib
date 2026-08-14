@@ -13,5 +13,10 @@ const userProfileSchema = new mongoose.Schema({
   totalMarks:       { type: Number, default: 0 },
   highestMarks:     { type: Number, default: 0 },
 }, { timestamps: true });
+// Supports GET /api/rankings/top-performers (homepage, public, hit often) and
+// GET /api/rankings/leaderboard: both filter { totalTests: { $gt: 0 } } and
+// sort by totalMarks descending. Without this, that's a collection scan +
+// in-memory sort once the student base grows past a few thousand.
+userProfileSchema.index({ totalTests: 1, totalMarks: -1 });
 
 module.exports = mongoose.model('UserProfile', userProfileSchema);

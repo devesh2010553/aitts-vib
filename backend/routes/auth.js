@@ -161,22 +161,23 @@ router.post('/forgot-attempts', async (req, res) => {
       return res.json({ allowed: false, notFound: true });
     }
 
-    // Rate limit: store attempts in memory (resets on server restart / use Redis for prod)
-    if (!global._forgotAttempts) global._forgotAttempts = {};
+    // Rate limit: persisted in MongoDB (see backend/models/ForgotAttempt.js) —
+    // was in-process memory, which resets on restart and would give each PM2
+    // worker its own independent counter if the app ever runs multi-process.
+    const ForgotAttempt = require('../models/ForgotAttempt');
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
     const key = email + ':' + today;
-    global._forgotAttempts[key] = (global._forgotAttempts[key] || 0) + 1;
+    const attempt = await ForgotAttempt.findOneAndUpdate(
+      { _id: key },
+      { $inc: { count: 1 } },
+      { upsert: true, new: true }
+    );
 
-    // Clean old keys (keep memory tidy)
-    Object.keys(global._forgotAttempts).forEach(k => {
-      if (!k.endsWith(today)) delete global._forgotAttempts[k];
-    });
-
-    if (global._forgotAttempts[key] > 3) {
+    if (attempt.count > 3) {
       return res.status(429).json({ allowed: false, error: 'Maximum 3 reset emails per day. Try again tomorrow.' });
     }
 
-    res.json({ allowed: true, remaining: 3 - global._forgotAttempts[key] });
+    res.json({ allowed: true, remaining: 3 - attempt.count });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

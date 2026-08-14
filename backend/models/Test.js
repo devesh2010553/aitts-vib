@@ -10,10 +10,19 @@ const testSchema = new mongoose.Schema({
   adEnabled:{type:Boolean,default:false}, adImages:[{type:mongoose.Schema.Types.ObjectId,ref:'AdImage'}],
   adRedirectUrl:{type:String,default:''}, adHtml:{type:String,default:''},
   attemptCount:{type:Number,default:0}, targetBatches:[{type:String,enum:['11','12','dropper']}],
-  bonusMarks:{type:Number,default:0}
+  bonusMarks:{type:Number,default:0},
+  // Maintained alongside totalMarks below — lets list/dashboard views show the
+  // question count WITHOUT selecting the (large, image-heavy) `questions` array.
+  questionCount:{type:Number,default:0}
 }, { timestamps:true });
 testSchema.pre('save', function(next) {
-  if (this.questions&&this.questions.length) this.totalMarks = this.questions.reduce((s,q)=>s+q.marks,0);
+  if (this.questions&&this.questions.length) {
+    this.totalMarks    = this.questions.reduce((s,q)=>s+q.marks,0);
+    this.questionCount = this.questions.length;
+  } else if (this.isModified('questions')) {
+    // questions explicitly cleared to empty
+    this.questionCount = 0;
+  }
   next();
 });
 module.exports = mongoose.model('Test', testSchema);

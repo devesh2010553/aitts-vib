@@ -8,6 +8,7 @@ const Result      = require('../models/Result');
 const AdImage     = require('../models/AdImage');
 const admin       = require('../utils/firebaseAdmin');
 const { authenticateAdmin } = require('../middleware/auth');
+const { invalidate } = require('../utils/leaderboardCache');
 
 // Stats — public, no auth needed (used on home page for counters)
 router.get('/stats', async (req, res) => {
@@ -33,7 +34,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 
 // Tests CRUD
 router.get('/tests', async (req, res) => {
-  try { res.json(await Test.find().sort({ createdAt: -1 })); }
+  try { res.json(await Test.find().sort({ createdAt: -1 }).lean()); }
   catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -86,6 +87,7 @@ router.post('/tests/:id/bonus', async (req, res) => {
     }
     test.bonusMarks = bonusMarks;
     await test.save();
+    invalidate({ testId: test._id }); // bonus changes affect that test's leaderboard immediately, not after TTL
     res.json({ message: 'Bonus marks applied to all students who took this test', bonusMarks });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -101,6 +103,7 @@ router.post('/results/:id/bonus', async (req, res) => {
     result.obtainedMarks += delta;
     result.bonusMarks = bonusMarks;
     await result.save();
+    invalidate({ testId: result.testId, batch: result.batch });
     res.json({ message: 'Bonus marks applied to this student for this test', bonusMarks, obtainedMarks: result.obtainedMarks });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -126,11 +129,10 @@ router.delete('/tests/:id/results-only', async (req, res) => {
     }
 
     // 2. Delete from MongoDB
-    const affected = await Result.find(filter).select('userId obtainedMarks');
+    const affected = await Result.find(filter).select('userId obtainedMarks').lean();
     const userIds  = [...new Set(affected.map(r => String(r.userId)))];
     const del      = await Result.deleteMany(filter);
-
-    // 3. Recalculate UserProfile stats
+    invalidate({ testId, batch: batch !== 'all' ? batch : undefined });
     for (const uid of userIds) {
       const rem = await Result.find({ userId: uid, inProgress: false });
       await UserProfile.findByIdAndUpdate(uid, {
@@ -185,10 +187,10 @@ router.delete('/tests/:id/results', async (req, res) => {
     }
 
     // 2. Delete from MongoDB
-    const affected = await Result.find(filter).select('userId obtainedMarks');
+    const affected = await Result.find(filter).select('userId obtainedMarks').lean();
     const userIds  = [...new Set(affected.map(r => String(r.userId)))];
     const del      = await Result.deleteMany(filter);
-
+    invalidate({ testId, batch: batch !== 'all' ? batch : undefined });
     for (const uid of userIds) {
       const rem = await Result.find({ userId: uid, inProgress: false });
       await UserProfile.findByIdAndUpdate(uid, {
@@ -210,7 +212,8 @@ router.get('/tests/:id/results', async (req, res) => {
   try {
     res.json(await Result.find({ testId: req.params.id, inProgress: false })
       .populate('userId','name phone coachingName batch')
-      .sort({ obtainedMarks: -1, timeTaken: 1 }));
+      .sort({ obtainedMarks: -1, timeTaken: 1 })
+      .lean());
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -219,16 +222,16 @@ router.get('/students', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit)||2000;
     const [students, total] = await Promise.all([
-      UserProfile.find().sort({ createdAt: -1 }).limit(limit),
+      UserProfile.find().sort({ createdAt: -1 }).limit(limit).lean(),
       UserProfile.countDocuments()
     ]);
     // Fetch emails from Firebase in batch (up to 100 at a time)
     const studentsWithEmail = await Promise.all(students.map(async (s) => {
       try {
         const fbUser = await admin.auth().getUser(s.uid);
-        return { ...s.toObject(), email: fbUser.email };
+        return { ...s, email: fbUser.email };
       } catch {
-        return { ...s.toObject(), email: '' };
+        return { ...s, email: '' };
       }
     }));
     res.json({ students: studentsWithEmail, total });

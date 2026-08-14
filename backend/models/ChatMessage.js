@@ -10,5 +10,9 @@ const chatMessageSchema = new Schema({
   isAdmin: { type: Boolean, default: false },
   time:    { type: String, default: '' }, // display string, e.g. "10:32 AM"
 }, { timestamps: true });
+// Supports GET /api/chat/messages: .sort({ createdAt:-1 }).limit(n) —
+// without this, that sort does an in-memory sort once the collection grows
+// past a few thousand messages.
+chatMessageSchema.index({ createdAt: -1 });
 
 module.exports = chatDb.model('ChatMessage', chatMessageSchema);

@@ -4,6 +4,7 @@ const Result  = require('../models/Result');
 const Test    = require('../models/Test');
 const UserProfile = require('../models/UserProfile');
 const { queueResult } = require('../utils/sheetsQueue');
+const { invalidate } = require('../utils/leaderboardCache');
 const { authenticateStudent } = require('../middleware/auth');
 
 async function calcRanks(testId, obtainedMarks, timeTaken, batch) {
@@ -17,7 +18,13 @@ router.post('/submit', authenticateStudent, async (req, res) => {
     const { testId, answers, startedAt, timeTaken } = req.body;
     const existing = await Result.findOne({ userId: req.user._id, testId });
     if (existing && !existing.inProgress) return res.status(400).json({ error: 'Already submitted' });
-    const test = await Test.findById(testId);
+    // Grading only needs marks/correctness data — NOT question/option text or
+    // images (the bulk of a ~2MB test document). Excluding them here is the
+    // single biggest win for submission-burst performance (many students
+    // submitting near the deadline at once).
+    const test = await Test.findById(testId)
+      .select('-questions.questionText -questions.questionImage -questions.options.text -questions.options.imageData -questions.explanation')
+      .lean();
     if (!test) return res.status(404).json({ error: 'Test not found' });
 
     let obtainedMarks=0, correctAnswers=0, wrongAnswers=0, notAttempted=0;
@@ -60,17 +67,20 @@ router.post('/submit', authenticateStudent, async (req, res) => {
       UserProfile.findByIdAndUpdate(req.user._id, { $inc:{ totalTests:1, totalMarks:obtainedMarks }, $max:{ highestMarks:obtainedMarks } })
     ]);
     queueResult({ submittedAt:new Date(), userName:req.user.name, userEmail:req.user.email, userPhone:req.user.phone||'', batch:req.user.batch, coachingName:req.user.coachingName, testTitle:test.title, subject:test.subject, topic:test.topic, obtainedMarks, totalMarks:test.totalMarks, percentage:pct, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:overallRank, batchRank, testId, userId:req.user._id });
+    invalidate({ testId, batch: req.user.batch }); // fire-and-forget — see leaderboardCache.js
     const io = req.app.get('io');
-    if (io) { const top = await Result.find({ testId, inProgress:false }).sort({ obtainedMarks:-1, timeTaken:1 }).limit(10).select('userName coachingName obtainedMarks totalMarks timeTaken rank batch'); io.to('test-'+testId).emit('ranking-update', { testId, rankings:top }); }
+    if (io) { const top = await Result.find({ testId, inProgress:false }).sort({ obtainedMarks:-1, timeTaken:1 }).limit(10).select('userName coachingName obtainedMarks totalMarks timeTaken rank batch').lean(); io.to('test-'+testId).emit('ranking-update', { testId, rankings:top }); }
     res.json({ message:'Submitted', result:{ id:result._id, obtainedMarks, totalMarks:test.totalMarks, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:overallRank, batchRank, batch:req.user.batch, percentage:pct } });
   } catch(err) { console.error('[RESULTS] submit:', err); res.status(500).json({ error:err.message||'Submission failed' }); }
 });
 
 router.get('/my/:testId', authenticateStudent, async (req, res) => {
   try {
-    const result = await Result.findOne({ userId:req.user._id, testId:req.params.testId, inProgress:false });
+    const result = await Result.findOne({ userId:req.user._id, testId:req.params.testId, inProgress:false }).lean();
     if (!result) return res.status(404).json({ error:'Result not found' });
-    const test = await Test.findById(req.params.testId);
+    // The analysis view only renders questionText/explanation per question —
+    // never images — so exclude the image fields from this payload too.
+    const test = await Test.findById(req.params.testId).select('-questions.questionImage -questions.options.imageData').lean();
     const { overallRank, batchRank } = await calcRanks(req.params.testId, result.obtainedMarks, result.timeTaken, result.batch);
     const [total, totalBatch] = await Promise.all([Result.countDocuments({ testId:req.params.testId, inProgress:false }), Result.countDocuments({ testId:req.params.testId, batch:result.batch, inProgress:false })]);
     res.json({ result, test, rank:overallRank, batchRank, totalParticipants:total, totalBatchParticipants:totalBatch });
@@ -78,7 +88,7 @@ router.get('/my/:testId', authenticateStudent, async (req, res) => {
 });
 
 router.get('/my-results', authenticateStudent, async (req, res) => {
-  try { res.json(await Result.find({ userId:req.user._id, inProgress:false }).populate('testId','title subject topic totalMarks').sort({ submittedAt:-1 })); }
+  try { res.json(await Result.find({ userId:req.user._id, inProgress:false }).populate('testId','title subject topic totalMarks').sort({ submittedAt:-1 }).lean()); }
   catch(err) { res.status(500).json({ error:err.message }); }
 });
 

@@ -1,22 +1,19 @@
 const mongoose = require('mongoose');
-// Compact leaderboard archive — saved before results are deleted to save storage
+
+// Generic cache-aside store for leaderboard reads. Previously this model was
+// defined (as a per-test rank archive) but never actually written to or read
+// from anywhere in the codebase — this replaces that with something that's
+// actually wired up: leaderboard.js/rankings.js write a computed payload here
+// keyed by cacheKey, and serve subsequent reads from it until it expires
+// (see backend/utils/leaderboardCache.js). No student-specific data (myRank,
+// myResult) is ever stored here — only the shared/public parts of a response.
 const snapshotSchema = new mongoose.Schema({
-  testId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Test', required: true },
-  testTitle: { type: String },
-  batch:     { type: String, enum: ['11','12','dropper','all'], default: 'all' },
-  entries: [{
-    rank:         Number,
-    userId:       mongoose.Schema.Types.ObjectId,
-    userName:     String,
-    userEmail:    String,
-    coachingName: String,
-    batch:        String,
-    obtainedMarks:Number,
-    totalMarks:   Number,
-    timeTaken:    Number
-  }],
-  totalParticipants: { type: Number, default: 0 },
-  archivedAt: { type: Date, default: Date.now }
+  cacheKey:   { type: String, required: true, unique: true },
+  scope:      { type: String, enum: ['class-cumulative', 'per-test', 'overall', 'normalised'], required: true },
+  testId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Test' }, // set only for scope:'per-test'
+  batch:      { type: String, enum: ['11', '12', 'dropper', ''], default: '' }, // '' = all batches
+  payload:    { type: mongoose.Schema.Types.Mixed, required: true },
+  computedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
-snapshotSchema.index({ testId: 1, batch: 1 });
+
 module.exports = mongoose.model('LeaderboardSnapshot', snapshotSchema);

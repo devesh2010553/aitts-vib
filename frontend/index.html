@@ -1123,7 +1123,7 @@ function loadTests(){
       card+='<div class="tc-subj">'+esc(t.subject)+'</div>';
       card+='<div class="tc-title">'+esc(t.title)+'</div>';
       card+='<div class="tc-topic"><i class="fas fa-tag" style="color:var(--gold);margin-right:4px;font-size:10px"></i>'+esc(t.topic)+'</div>';
-      card+='<div class="tc-meta"><span><i class="fas fa-clock"></i> '+t.duration+'min</span><span><i class="fas fa-question-circle"></i> '+(t.questions?t.questions.length:'?')+'Q</span><span><i class="fas fa-star"></i> '+(t.totalMarks||'?')+'</span></div>';
+      card+='<div class="tc-meta"><span><i class="fas fa-clock"></i> '+t.duration+'min</span><span><i class="fas fa-question-circle"></i> '+(t.questionCount!=null?t.questionCount:'?')+'Q</span><span><i class="fas fa-star"></i> '+(t.totalMarks||'?')+'</span></div>';
       card+='<div class="tc-footer"><span style="font-size:11px;color:var(--text-muted)"><i class="fas fa-users"></i> '+(t.attemptCount||0)+'</span>';
       if(t.attempted)card+='<span class="done-badge"><i class="fas fa-check"></i> '+(t.myResult&&t.myResult.obtainedMarks!=null?t.myResult.obtainedMarks:'?')+'/'+(t.totalMarks||'?')+'</span>';
       else if(t.inProgress)card+='<button class="btn btn-sm" style="background:#fef3c7;color:#92400e;border:none;cursor:pointer;border-radius:8px;padding:7px 13px;font-weight:600" onclick="initiateTest(\''+t._id+'\')"><i class="fas fa-redo"></i> Resume</button>';

@@ -1673,7 +1673,7 @@ function loadClassLeaderboard(batch){
 function renderClassCumulative(data){
   var c=document.getElementById('leaderboard-table');if(!c)return;
   var note=document.getElementById('lb-rule-note');
-  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: sum of each attempted test\'s % ÷ total tests published for this class ('+data.totalTests+'). Skipping a test counts as 0% for it — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
+  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: marks obtained ÷ total marks across all '+data.totalTests+' published test'+(data.totalTests===1?'':'s')+' for this class ('+data.totalPossible+'). A skipped test still counts toward the total — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
   if(!data.leaderboard.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
   c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th><th>Tests Taken</th><th>Avg %</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
     data.leaderboard.map(function(u,i){

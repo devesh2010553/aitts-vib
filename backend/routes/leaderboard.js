@@ -101,11 +101,14 @@ router.get('/overall', authenticateStudent, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── 2b. Class leaderboard (cumulative avg %, penalises skipped tests) ─────
-// Rank = (sum of each attempted test's %) / (total tests published for this class)
-// A student who skips a test is scored 0% for it — rewards consistency over
-// a single lucky 100%. Also returns the list of tests for that class so the
-// UI can offer a per-test dropdown.
+// ── 2b. Class leaderboard (marks-weighted cumulative %, penalises skips) ──
+// Rank = (marks obtained across attempted tests) / (marks possible across
+// EVERY published test for this class) — a skipped test contributes 0
+// obtained but still counts toward the denominator. This is marks-weighted
+// (not an average-of-percentages), so a small 4-mark test can't outweigh a
+// large 72-mark test the way equal per-test weighting would.
+// Also returns the list of tests for that class so the UI can offer a
+// per-test dropdown.
 router.get('/class', authenticateStudent, async (req, res) => {
   try {
     const { batch } = req.query;
@@ -117,10 +120,11 @@ router.get('/class', authenticateStudent, async (req, res) => {
     const tests = await Test.find({
       isPublished: true,
       $or: [{ targetBatches: { $size: 0 } }, { targetBatches: batch }]
-    }).select('_id title createdAt').sort({ createdAt: 1 });
+    }).select('_id title totalMarks createdAt').sort({ createdAt: 1 });
 
     const testIds = tests.map(t => t._id);
     const totalTests = testIds.length;
+    const totalPossibleAll = tests.reduce((s, t) => s + (t.totalMarks || 0), 0);
 
     let rows = [];
     if (totalTests > 0) {
@@ -131,16 +135,14 @@ router.get('/class', authenticateStudent, async (req, res) => {
             userName:      { $last: '$userName' },
             coachingName:  { $last: '$coachingName' },
             testsTaken:    { $sum: 1 },
-            sumPercentage: { $sum: { $cond: [{ $gt: ['$totalMarks', 0] }, { $multiply: [{ $divide: ['$obtainedMarks', '$totalMarks'] }, 100] }, 0] } },
             totalObtained: { $sum: '$obtainedMarks' },
-            totalPossible: { $sum: '$totalMarks' },
             totalTime:     { $sum: '$timeTaken' },
         }},
       ]);
     }
 
     const sorted = rows
-      .map(r => ({ ...r, avgPercentage: totalTests > 0 ? r.sumPercentage / totalTests : 0 }))
+      .map(r => ({ ...r, avgPercentage: totalPossibleAll > 0 ? (r.totalObtained / totalPossibleAll * 100) : 0 }))
       .sort((a, b) => b.avgPercentage - a.avgPercentage || a.totalTime - b.totalTime)
       .map((r, i) => ({
         rank:          i + 1,
@@ -149,7 +151,7 @@ router.get('/class', authenticateStudent, async (req, res) => {
         testsTaken:    r.testsTaken,
         totalTests,
         totalObtained: r.totalObtained,
-        totalPossible: r.totalPossible,
+        totalPossible: totalPossibleAll,
         avgPercentage: r.avgPercentage.toFixed(2),
         totalTime:     r.totalTime,
       }));
@@ -157,6 +159,7 @@ router.get('/class', authenticateStudent, async (req, res) => {
     res.json({
       batch,
       totalTests,
+      totalPossible: totalPossibleAll,
       tests: tests.map(t => ({ _id: t._id, title: t.title })),
       leaderboard: sorted,
     });

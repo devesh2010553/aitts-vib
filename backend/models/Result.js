@@ -10,7 +10,8 @@ const resultSchema = new mongoose.Schema({
   timeTaken:{type:Number,default:0}, rank:{type:Number}, batchRank:{type:Number},
   submittedAt:{type:Date,default:Date.now}, startedAt:{type:Date},
   inProgress:{type:Boolean,default:false}, savedAnswers:{type:mongoose.Schema.Types.Mixed,default:{}},
-  lastActiveAt:{type:Date}, violations:{type:Number,default:0}
+  lastActiveAt:{type:Date}, violations:{type:Number,default:0},
+  bonusMarks:{type:Number,default:0}, testBonusApplied:{type:Number,default:0}
 }, { timestamps:true });
 resultSchema.index({ userId:1, testId:1 }, { unique:true });
 resultSchema.index({ testId:1, batch:1, obtainedMarks:-1, timeTaken:1 });

@@ -101,39 +101,45 @@ router.get('/overall', authenticateStudent, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── 2b. Class leaderboard (marks-weighted cumulative %, penalises skips) ──
+// ── 2b. Class / All leaderboard (marks-weighted, fixed denominator) ───────
 // Rank = (marks obtained across attempted tests) / (marks possible across
-// EVERY published test for this class) — a skipped test contributes 0
-// obtained but still counts toward the denominator. This is marks-weighted
-// (not an average-of-percentages), so a small 4-mark test can't outweigh a
-// large 72-mark test the way equal per-test weighting would.
-// Also returns the list of tests for that class so the UI can offer a
-// per-test dropdown.
+// EVERY published test in scope) — a skipped test still counts toward the
+// denominator (scores 0 for it), so consistent performers across many tests
+// rank above a single lucky high score. batch='' scopes to every published
+// test across all batches (used by the "All" tab); batch=11/12/dropper
+// scopes to tests targeting that batch. Also returns the test list for the
+// UI's per-test dropdown.
 router.get('/class', authenticateStudent, async (req, res) => {
   try {
     const { batch } = req.query;
-    if (!['11', '12', 'dropper'].includes(batch)) {
-      return res.status(400).json({ error: 'Valid batch (11, 12, dropper) required' });
+    if (batch && !['11', '12', 'dropper'].includes(batch)) {
+      return res.status(400).json({ error: 'batch must be 11, 12, dropper, or omitted for all' });
     }
 
-    // Tests targeting this batch (empty targetBatches = all batches)
-    const tests = await Test.find({
-      isPublished: true,
-      $or: [{ targetBatches: { $size: 0 } }, { targetBatches: batch }]
-    }).select('_id title totalMarks createdAt').sort({ createdAt: 1 });
+    // Tests in scope: for a specific batch, targeting it (empty targetBatches = all batches);
+    // for "All", every published test regardless of target.
+    const testFilter = batch
+      ? { isPublished: true, $or: [{ targetBatches: { $size: 0 } }, { targetBatches: batch }] }
+      : { isPublished: true };
+    const tests = await Test.find(testFilter).select('_id title totalMarks createdAt').sort({ createdAt: 1 });
 
     const testIds = tests.map(t => t._id);
     const totalTests = testIds.length;
     const totalPossibleAll = tests.reduce((s, t) => s + (t.totalMarks || 0), 0);
 
+    const resultMatch = { testId: { $in: testIds }, inProgress: false };
+    if (batch) resultMatch.batch = batch;
+
+    const bMap = { '11': 'Class 11', '12': 'Class 12', dropper: 'Dropper' };
     let rows = [];
     if (totalTests > 0) {
       rows = await Result.aggregate([
-        { $match: { testId: { $in: testIds }, batch, inProgress: false } },
+        { $match: resultMatch },
         { $group: {
             _id:           '$userId',
             userName:      { $last: '$userName' },
             coachingName:  { $last: '$coachingName' },
+            batch:         { $last: '$batch' },
             testsTaken:    { $sum: 1 },
             totalObtained: { $sum: '$obtainedMarks' },
             totalTime:     { $sum: '$timeTaken' },
@@ -148,6 +154,7 @@ router.get('/class', authenticateStudent, async (req, res) => {
         rank:          i + 1,
         name:          r.userName     || 'Unknown',
         coachingName:  r.coachingName || '--',
+        batch:         bMap[r.batch]  || r.batch || '--',
         testsTaken:    r.testsTaken,
         totalTests,
         totalObtained: r.totalObtained,
@@ -157,7 +164,7 @@ router.get('/class', authenticateStudent, async (req, res) => {
       }));
 
     res.json({
-      batch,
+      batch: batch || '',
       totalTests,
       totalPossible: totalPossibleAll,
       tests: tests.map(t => ({ _id: t._id, title: t.title })),

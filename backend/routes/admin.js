@@ -67,6 +67,44 @@ router.delete('/tests/:id', async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Bonus marks: whole-test (applies to every student who attempted it) ───
+// Stores the currently-applied amount on the Test doc and $inc's every
+// Result by the delta, so re-applying with a new value only shifts marks by
+// the difference (safe to call repeatedly / edit the value later).
+router.post('/tests/:id/bonus', async (req, res) => {
+  try {
+    const bonusMarks = Number(req.body.bonusMarks);
+    if (!Number.isFinite(bonusMarks)) return res.status(400).json({ error: 'bonusMarks must be a number' });
+    const test = await Test.findById(req.params.id);
+    if (!test) return res.status(404).json({ error: 'Test not found' });
+    const delta = bonusMarks - (test.bonusMarks || 0);
+    if (delta !== 0) {
+      await Result.updateMany(
+        { testId: test._id, inProgress: false },
+        { $inc: { obtainedMarks: delta, testBonusApplied: delta } }
+      );
+    }
+    test.bonusMarks = bonusMarks;
+    await test.save();
+    res.json({ message: 'Bonus marks applied to all students who took this test', bonusMarks });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Bonus marks: single student on a single test ───────────────────────────
+router.post('/results/:id/bonus', async (req, res) => {
+  try {
+    const bonusMarks = Number(req.body.bonusMarks);
+    if (!Number.isFinite(bonusMarks)) return res.status(400).json({ error: 'bonusMarks must be a number' });
+    const result = await Result.findById(req.params.id);
+    if (!result) return res.status(404).json({ error: 'Result not found' });
+    const delta = bonusMarks - (result.bonusMarks || 0);
+    result.obtainedMarks += delta;
+    result.bonusMarks = bonusMarks;
+    await result.save();
+    res.json({ message: 'Bonus marks applied to this student for this test', bonusMarks, obtainedMarks: result.obtainedMarks });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // Delete results for a test by batch
 // DELETE results from MongoDB + archive Sheet rows to AIITS_Archive
 // Frees both MongoDB space AND Sheet row limit. Data preserved in Archive sheet.

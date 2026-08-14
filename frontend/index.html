@@ -325,13 +325,6 @@ textarea{resize:vertical}
 </head>
 <body>
 <script type="module">/* FIREBASE_CONFIG_PLACEHOLDER */</script>
-<!-- DEV BANNER -->
-<div class="dev-banner">
-  <i class="fas fa-tools"></i>
-  <span>Site is in development. For any problems, complaint at
-    <a href="https://www.instagram.com/xavier06444" target="_blank" rel="noopener">@xavier06444</a>
-  </span>
-</div>
 
 <div id="loading-screen" class="loading-screen">
   <div style="text-align:center">
@@ -553,10 +546,6 @@ textarea{resize:vertical}
     <!-- LEADERBOARD TAB -->
     <div id="dash-tab-leaderboard" class="dtab">
       <div class="dtab-header"><h3><i class="fas fa-trophy" style="color:var(--gold)"></i> Leaderboard</h3></div>
-      <div class="batch-filter" style="margin-bottom:8px">
-        <button class="bfbtn active" onclick="setLbMode('overall')" id="lbm-overall"><i class="fas fa-percent"></i> Overall %</button>
-        <button class="bfbtn" onclick="setLbMode('normalised')" id="lbm-normalised"><i class="fas fa-globe"></i> All Batches</button>
-      </div>
       <div class="batch-filter" id="lb-batch-filter">
         <button class="bfbtn active" onclick="loadNewLeaderboard('')" id="lbf-all2">All</button>
         <button class="bfbtn" onclick="loadNewLeaderboard('11')" id="lbf-112">Class 11</button>
@@ -568,7 +557,7 @@ textarea{resize:vertical}
           <option value="">Cumulative (avg % across all tests)</option>
         </select>
       </div>
-      <p id="lb-rule-note" style="font-size:12px;color:var(--text-muted);margin-bottom:8px"><i class="fas fa-info-circle"></i> Ranked by: (marks obtained ÷ total marks) × 100. Ties broken by time taken.</p>
+      <p id="lb-rule-note" style="font-size:12px;color:var(--text-muted);margin-bottom:8px"><i class="fas fa-info-circle"></i> Ranked by: marks obtained ÷ total marks across all published tests in scope. A skipped test still counts toward the total. Ties broken by time taken.</p>
       <div id="leaderboard-table"></div>
     </div>
     <!-- GALLERY TAB -->
@@ -1118,7 +1107,7 @@ function switchTab(tab){
   document.querySelectorAll('#page-dashboard .mob-btn').forEach(function(l){l.classList.toggle('active',(l.getAttribute('onclick')||'').indexOf("'"+tab+"'")!==-1);});
   if(tab==='tests')loadTests();
   else if(tab==='my-results')loadMyResults();
-  else if(tab==='leaderboard'){setLbMode('overall');}
+  else if(tab==='leaderboard'){loadNewLeaderboard('');}
   else if(tab==='chat'){if(window.socket)initChat();showChatUnreadDot(false);}
   else if(tab==='gallery')loadStudentGallery();
   else if(tab==='settings')updateNavUser();
@@ -1437,6 +1426,7 @@ function loadMyResults(){
         '<div style="flex:1;padding:8px;background:#fff;border:1.5px solid rgba(43,108,176,0.25);border-radius:8px;text-align:center"><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">'+(bMap[r.batch]||'Batch')+' Rank</div><div style="font-size:20px;font-weight:900;color:#2b6cb0;font-family:var(--font-display)">#'+(r.batchRank||'--')+'</div></div>'+
         '</div>'+
         (testId?'<button class="btn btn-outline btn-sm" onclick="showRankingModal(\''+testId+'\',\''+esc(r.batch||'')+'\')"><i class="fas fa-list-ol"></i> View All Rankings</button>':'')+
+        (testId?'<button class="btn btn-outline btn-sm" onclick="showAnalysisModal(\''+testId+'\')"><i class="fas fa-chart-line"></i> Analysis</button>':'')+
         '</div>';
     }).join('');
   }).catch(function(err){c.innerHTML='<p style="color:var(--red);padding:20px">'+esc(err.message)+'</p>';});
@@ -1483,6 +1473,50 @@ function loadRkModal(testId,batch,btn){
   }).catch(function(err){c.innerHTML='<p style="color:var(--red);padding:12px">'+esc(err.message)+'</p>';});
 }
 
+function showAnalysisModal(testId){
+  var existing=document.getElementById('an-modal');if(existing)existing.remove();
+  var modal=document.createElement('div');modal.id='an-modal';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML='<div style="background:#fff;border-radius:12px;padding:22px;max-width:760px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,0.2)">'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
+    '<h3 style="margin:0"><i class="fas fa-chart-line" style="color:var(--gold)"></i> Test Analysis</h3>'+
+    '<button onclick="document.getElementById(\'an-modal\').remove()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1">&times;</button></div>'+
+    '<div id="an-modal-content"><p style="color:var(--text-muted);text-align:center;padding:16px">Loading...</p></div></div>';
+  document.body.appendChild(modal);
+  modal.onclick=function(e){if(e.target===modal)modal.remove();};
+  api('/api/results/my/'+testId).then(function(data){
+    var c=document.getElementById('an-modal-content');if(!c)return;
+    var result=data.result,test=data.test;
+    var ansByQ={};
+    (result.answers||[]).forEach(function(a){ansByQ[a.questionId]=a;});
+    var correct=result.correctAnswers||0,wrong=result.wrongAnswers||0,skip=result.notAttempted||0;
+    var total=correct+wrong+skip;
+    var accuracy=(correct+wrong)>0?Math.round(correct/(correct+wrong)*100):0;
+    var avgTimePerQ=total>0?Math.round((result.timeTaken||0)/total):0;
+    var html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;text-align:center">'+
+      '<div style="background:var(--bg-elevated);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--text-muted)">Accuracy</div><div style="font-weight:800;font-size:18px;color:var(--gold)">'+accuracy+'%</div></div>'+
+      '<div style="background:var(--bg-elevated);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--text-muted)">Correct</div><div style="font-weight:800;font-size:18px;color:var(--green)">'+correct+'</div></div>'+
+      '<div style="background:var(--bg-elevated);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--text-muted)">Wrong</div><div style="font-weight:800;font-size:18px;color:var(--red)">'+wrong+'</div></div>'+
+      '<div style="background:var(--bg-elevated);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--text-muted)">Avg time/Q</div><div style="font-weight:800;font-size:18px">'+avgTimePerQ+'s</div></div>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Question-wise breakdown</div>';
+    (test.questions||[]).forEach(function(q,i){
+      var a=ansByQ[q._id]||{};
+      var status=a.isCorrect?'Correct':((a.selectedOption===-1||!a.selectedOption&&!(a.selectedOptions&&a.selectedOptions.length))?'Skipped':'Wrong');
+      var color=status==='Correct'?'var(--green)':status==='Wrong'?'var(--red)':'#888';
+      var qText=q.questionText||('Question '+(i+1));
+      html+='<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'+
+        '<div style="font-size:13px;flex:1"><strong>Q'+(i+1)+'.</strong> '+esc(qText.slice(0,140))+(qText.length>140?'...':'')+'</div>'+
+        '<span style="font-size:11px;font-weight:700;color:'+color+';white-space:nowrap">'+status+' ('+((a.marksAwarded||0)>=0?'+':'')+(a.marksAwarded||0)+')</span>'+
+        '</div>'+
+        (q.explanation?'<div style="font-size:11px;color:var(--text-muted);margin-top:6px"><i class="fas fa-lightbulb"></i> '+esc(q.explanation)+'</div>':'')+
+        '</div>';
+    });
+    c.innerHTML=html;
+  }).catch(function(err){var c=document.getElementById('an-modal-content');if(c)c.innerHTML='<p style="color:var(--red);padding:12px">'+esc(err.message)+'</p>';});
+}
+
 function loadLeaderboard(batch){
   var c=document.getElementById('leaderboard-table');if(!c)return;
   ['all','11','12','dropper'].forEach(function(b){var el=document.getElementById('lbf-'+b);if(el)el.classList.toggle('active',(batch===''&&b==='all')||(batch===b));});
@@ -1512,9 +1546,9 @@ function openFeedback(){var m=document.getElementById('feedback-modal');if(m)m.c
 function submitFeedback(){
   var text=gv('feedback-text');if(!text){toast('Please write your feedback','error');return;}
   var msg=encodeURIComponent('AIITS Feedback: '+text);
-  window.open('https://www.instagram.com/xavier06444','_blank','noopener');
+  window.open('https://www.instagram.com/devesh_sharm.a','_blank','noopener');
   closeModal('feedback-modal');
-  toast('Please send your feedback on Instagram @xavier06444','info',5000);
+  toast('Please send your feedback on Instagram @devesh_sharm.a','info',5000);
   var el=document.getElementById('feedback-text');if(el)el.value='';
 }
 
@@ -1612,16 +1646,10 @@ function savePassword(){
 
 
 // ── Leaderboard ──────────────────────────────────────────────────────────────
-var lbMode='overall', lbBatch='', lbClassData=null;
+var lbBatch='', lbClassData=null;
 function medalName(i,name){var medal=['🥇','🥈','🥉'];return (medal[i]||'')+' '+esc(name);}
 function fmtTime(t){var mins=Math.floor((t||0)/60),secs=((t||0)%60).toString().padStart(2,'0');return mins+'m '+secs+'s';}
 function pctSpan(p){return '<span style="font-weight:700;color:'+(p>=80?'#276749':p>=50?'#d97706':'#c53030')+'">'+p+'%</span>';}
-
-function setLbMode(mode){
-  lbMode=mode;
-  ['overall','normalised'].forEach(function(m){var el=document.getElementById('lbm-'+m);if(el)el.classList.toggle('active',m===mode);});
-  loadNewLeaderboard(lbBatch);
-}
 
 function loadNewLeaderboard(batch){
   if(batch!==undefined)lbBatch=batch;
@@ -1629,36 +1657,14 @@ function loadNewLeaderboard(batch){
     var b=id==='all2'?'':id==='dropper2'?'dropper':id.replace('2','');
     var el=document.getElementById('lbf-'+id);if(el)el.classList.toggle('active',b===lbBatch);
   });
-  var modeRow=document.getElementById('lbm-overall');
-  if(modeRow&&modeRow.parentElement)modeRow.parentElement.style.display=lbBatch?'none':'flex';
-  var testWrap=document.getElementById('lb-test-select-wrap');
-
-  if(lbBatch){
-    // Specific class: cumulative avg% (divided by TOTAL tests for the class) with per-test dropdown
-    if(testWrap)testWrap.style.display='block';
-    loadClassLeaderboard(lbBatch);
-  } else {
-    // "All": legacy cross-batch views
-    if(testWrap)testWrap.style.display='none';
-    var c=document.getElementById('leaderboard-table');if(!c)return;
-    c.innerHTML='<div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px"></div>';
-    var url=lbMode==='normalised'?'/api/leaderboard/normalised':'/api/leaderboard/overall?batch=';
-    var note=document.getElementById('lb-rule-note');if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: (marks obtained ÷ total marks) × 100. Ties broken by time taken.';
-    api(url).then(function(data){
-      if(!data.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
-      c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr>'+(lbMode==='normalised'?'<th>Rank</th><th>Name</th><th>Batch</th><th>Tests</th><th>Score%</th><th>Time</th>':'<th>Rank</th><th>Name</th><th>Batch</th><th>Tests</th><th>Score%</th><th>Total Marks</th><th>Time</th>')+'</tr></thead><tbody>'+
-        data.map(function(u,i){
-          var cls=i<3?'rank-'+(i+1):'';
-          return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td><td>'+esc(u.batch||'--')+'</td><td>'+u.testCount+'</td><td>'+pctSpan(u.percentage)+'</td>'+(lbMode==='overall'?'<td>'+u.totalObtained+'/'+u.totalPossible+'</td>':'')+'<td>'+fmtTime(u.totalTime)+'</td></tr>';
-        }).join('')+'</tbody></table></div>';
-    }).catch(function(e){c.innerHTML='<p style="color:var(--red)">'+esc(e.message)+'</p>';});
-  }
+  loadClassLeaderboard(lbBatch);
 }
 
 function loadClassLeaderboard(batch){
   var c=document.getElementById('leaderboard-table');if(!c)return;
   c.innerHTML='<div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px"></div>';
-  api('/api/leaderboard/class?batch='+batch).then(function(data){
+  var testWrap=document.getElementById('lb-test-select-wrap');if(testWrap)testWrap.style.display='block';
+  api('/api/leaderboard/class?batch='+(batch||'')).then(function(data){
     lbClassData=data;
     var sel=document.getElementById('lb-test-select');
     if(sel){
@@ -1672,13 +1678,14 @@ function loadClassLeaderboard(batch){
 
 function renderClassCumulative(data){
   var c=document.getElementById('leaderboard-table');if(!c)return;
+  var showBatch=!data.batch; // "All" view spans batches, so show which batch each student is in
   var note=document.getElementById('lb-rule-note');
-  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: marks obtained ÷ total marks across all '+data.totalTests+' published test'+(data.totalTests===1?'':'s')+' for this class ('+data.totalPossible+'). A skipped test still counts toward the total — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
+  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: marks obtained ÷ total marks across all '+data.totalTests+' published test'+(data.totalTests===1?'':'s')+' in scope ('+data.totalPossible+'). A skipped test still counts toward the total — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
   if(!data.leaderboard.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
-  c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th><th>Tests Taken</th><th>Avg %</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
+  c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th>'+(showBatch?'<th>Batch</th>':'')+'<th>Tests Taken</th><th>Avg %</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
     data.leaderboard.map(function(u,i){
       var cls=i<3?'rank-'+(i+1):'';
-      return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td><td>'+u.testsTaken+'/'+data.totalTests+'</td><td>'+pctSpan(u.avgPercentage)+'</td><td>'+u.totalObtained+'/'+u.totalPossible+'</td><td>'+fmtTime(u.totalTime)+'</td></tr>';
+      return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td>'+(showBatch?'<td>'+esc(u.batch||'--')+'</td>':'')+'<td>'+u.testsTaken+'/'+data.totalTests+'</td><td>'+pctSpan(u.avgPercentage)+'</td><td>'+u.totalObtained+'/'+u.totalPossible+'</td><td>'+fmtTime(u.totalTime)+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
 
@@ -1688,7 +1695,7 @@ function onLbTestSelect(testId){
   c.innerHTML='<div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px;margin-bottom:4px"></div><div class="skel" style="height:40px"></div>';
   var note=document.getElementById('lb-rule-note');
   if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: (marks obtained ÷ total marks) × 100 for this test. Ties broken by time taken.';
-  api('/api/leaderboard/test/'+testId+'?batch='+lbBatch).then(function(data){
+  api('/api/leaderboard/test/'+testId+'?batch='+(lbBatch||'')).then(function(data){
     var rows=data.rankings||[];
     if(!rows.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No attempts yet.</p>';return;}
     c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th><th>Score%</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
@@ -1702,23 +1709,9 @@ function onLbTestSelect(testId){
 // ── Chat ─────────────────────────────────────────────────────────────────────
 var chatMutedLocal=false;
 var chatInitDone=false;
-var CHAT_KEY='aiits_chat_v1';
 var CHAT_MUTE_KEY='aiits_chat_muted';
 var CHAT_BLOCKED_KEY='aiits_chat_blocked';
-var CHAT_TTL=24*60*60*1000; // 24 hours
 
-function saveChatToStorage(msgs){
-  try{localStorage.setItem(CHAT_KEY,JSON.stringify({ts:Date.now(),msgs:msgs.slice(-200)}));}catch(e){}
-}
-function loadChatFromStorage(){
-  try{
-    var raw=localStorage.getItem(CHAT_KEY);
-    if(!raw)return[];
-    var data=JSON.parse(raw);
-    if(Date.now()-data.ts>CHAT_TTL){localStorage.removeItem(CHAT_KEY);return[];}
-    return data.msgs||[];
-  }catch(e){return[];}
-}
 // Persist mute state so page refresh doesn't reset it
 function saveMuteState(muted){
   try{localStorage.setItem(CHAT_MUTE_KEY,muted?'1':'0');}catch(e){}
@@ -1730,7 +1723,7 @@ function loadMuteState(){
 function loadBlockedList(){
   try{return JSON.parse(localStorage.getItem(CHAT_BLOCKED_KEY)||'[]');}catch(e){return[];}
 }
-var chatMessages=loadChatFromStorage();
+var chatMessages=[]; // populated from server (GET /api/chat/messages) — messages persist server-side until an admin deletes them
 // Restore mute state immediately on load
 chatMutedLocal=loadMuteState();
 
@@ -1754,16 +1747,21 @@ function initChat(){
   // Apply persisted mute state immediately (before socket connects)
   applyChatMuteUI(chatMutedLocal);
 
-  // Render cached messages
+  // Load message history from the server (persists until an admin deletes it)
   var box=document.getElementById('chat-box');
-  if(box){
+  if(box)box.innerHTML='<p style="text-align:center;color:var(--text-muted);font-size:12px;margin:auto">Loading messages...</p>';
+  api('/api/chat/messages').then(function(msgs){
+    chatMessages=msgs||[];
+    if(!box)return;
     box.innerHTML='';
     if(chatMessages.length===0){
       box.innerHTML='<p style="text-align:center;color:var(--text-muted);font-size:12px;margin:auto">No messages yet. Say hello!</p>';
     } else {
       chatMessages.forEach(function(m){appendChatMsg(m,true);});
     }
-  }
+  }).catch(function(){
+    if(box)box.innerHTML='<p style="text-align:center;color:var(--text-muted);font-size:12px;margin:auto">Could not load chat history.</p>';
+  });
 
   if(chatInitDone)return; // Don't re-register socket events
   chatInitDone=true;
@@ -1773,7 +1771,6 @@ function initChat(){
     var blocked=loadBlockedList();
     if(blocked.indexOf(msg.name)!==-1&&!msg.isAdmin)return;
     chatMessages.push(msg);
-    saveChatToStorage(chatMessages);
     appendChatMsg(msg,false);
     var chatTab=document.getElementById('dash-tab-chat');
     if(!chatTab||!chatTab.classList.contains('active')){
@@ -1792,6 +1789,18 @@ function initChat(){
     else if(!d.blocked)blocked=blocked.filter(function(n){return n!==d.name;});
     try{localStorage.setItem(CHAT_BLOCKED_KEY,JSON.stringify(blocked));}catch(e){}
   });
+
+  // Admin deleted a message (or cleared all) — reflect it live
+  window.socket.on('chat-message-deleted',function(d){
+    var el=document.querySelector('[data-msgid="'+d.id+'"]');
+    if(el)el.remove();
+    chatMessages=chatMessages.filter(function(m){return String(m._id||m.id)!==String(d.id);});
+  });
+  window.socket.on('chat-cleared',function(){
+    chatMessages=[];
+    var b=document.getElementById('chat-box');
+    if(b)b.innerHTML='<p style="text-align:center;color:var(--text-muted);font-size:12px;margin:auto">No messages yet. Say hello!</p>';
+  });
 }
 
 function appendChatMsg(msg,skipScroll){
@@ -1799,6 +1808,7 @@ function appendChatMsg(msg,skipScroll){
   // Remove empty-state placeholder
   var empty=box.querySelector('p');if(empty&&box.children.length===1)box.innerHTML='';
   var div=document.createElement('div');
+  div.setAttribute('data-msgid',String(msg._id||msg.id||''));
   var isMe=S.user&&msg.name===S.user.name&&!msg.isAdmin;
   div.style.cssText='padding:7px 11px;border-radius:10px;max-width:82%;word-break:break-word;font-size:13px;line-height:1.4;'+(msg.isAdmin?'background:#fef3c7;border:1px solid #f0c040;align-self:flex-start':(isMe?'background:#e8f5e9;border:1px solid #a5d6a7;align-self:flex-end':'background:#fff;border:1px solid var(--border);align-self:flex-start'));
   div.innerHTML='<span style="font-weight:700;color:var(--gold);font-size:11px">'+(msg.isAdmin?'👑 Admin':(isMe?'You':esc(msg.name)+' <span style="opacity:0.6;font-weight:400">('+esc(msg.batch)+')</span>'))+'</span> <span style="opacity:0.5;font-size:10px">'+msg.time+'</span><br>'+esc(msg.text);

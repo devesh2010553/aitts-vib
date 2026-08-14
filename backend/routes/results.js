@@ -46,10 +46,12 @@ router.post('/submit', authenticateStudent, async (req, res) => {
       }
     }
     obtainedMarks = Math.max(0, obtainedMarks);
+    const testBonus = test.bonusMarks || 0;
+    obtainedMarks += testBonus;
     const tt = Math.max(0, timeTaken||0);
     const { overallRank, batchRank } = await calcRanks(testId, obtainedMarks, tt, req.user.batch);
     const pct = test.totalMarks>0 ? Math.round(obtainedMarks/test.totalMarks*1000)/10 : 0;
-    const rd = { userId:req.user._id, testId, userName:req.user.name, userEmail:req.user.email, coachingName:req.user.coachingName, batch:req.user.batch, answers:processedAnswers, totalMarks:test.totalMarks, obtainedMarks, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:overallRank, batchRank, startedAt:startedAt?new Date(startedAt):new Date(Date.now()-tt*1000), submittedAt:new Date(), inProgress:false, savedAnswers:{} };
+    const rd = { userId:req.user._id, testId, userName:req.user.name, userEmail:req.user.email, coachingName:req.user.coachingName, batch:req.user.batch, answers:processedAnswers, totalMarks:test.totalMarks, obtainedMarks, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:overallRank, batchRank, startedAt:startedAt?new Date(startedAt):new Date(Date.now()-tt*1000), submittedAt:new Date(), inProgress:false, savedAnswers:{}, testBonusApplied:testBonus };
     let result;
     if (existing) { result = await Result.findOneAndUpdate({ userId:req.user._id, testId }, rd, { new:true }); }
     else { result = new Result(rd); await result.save(); }

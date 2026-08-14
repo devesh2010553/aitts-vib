@@ -285,6 +285,46 @@ textarea{resize:vertical}
           <div id="sheet-lb-result" style="margin-top:8px"></div>
         </div>
       </div>
+
+      <!-- BONUS MARKS -->
+      <div class="del-results-card" style="background:#fffbf0;border-color:rgba(184,134,11,0.3)">
+        <div class="fc-title" style="color:var(--gold);margin-bottom:4px"><i class="fas fa-plus-circle"></i> Bonus Marks</div>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Award bonus marks to everyone who took a test, or to one specific student on one test. Editing the value later just shifts marks by the difference — safe to re-apply.</p>
+
+        <!-- Whole-test bonus -->
+        <div style="background:#fff;border:1.5px solid #f0c040;border-radius:8px;padding:12px 14px;margin-bottom:12px">
+          <p style="font-weight:700;font-size:13px;color:#b7791f;margin-bottom:8px"><i class="fas fa-users"></i> Bonus for entire test</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div class="fg" style="flex:1;min-width:180px;margin:0">
+              <label>Select Test</label>
+              <select id="bonus-test-sel" onchange="onBonusTestSelect()"><option value=""> Select a test </option></select>
+            </div>
+            <div class="fg" style="margin:0;width:120px">
+              <label>Bonus Marks</label>
+              <input type="number" id="bonus-test-marks" placeholder="e.g. 4" step="0.5">
+            </div>
+            <button class="btn btn-gold btn-sm" onclick="applyTestBonus()"><i class="fas fa-check"></i> Apply</button>
+          </div>
+          <p id="bonus-test-current" style="font-size:11px;color:#888;margin-top:6px"></p>
+        </div>
+
+        <!-- Per-student bonus -->
+        <div style="background:#fff;border:1.5px solid #e2c98a;border-radius:8px;padding:12px 14px">
+          <p style="font-weight:700;font-size:13px;color:#b7791f;margin-bottom:8px"><i class="fas fa-user"></i> Bonus for one student (same test as above)</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+            <div class="fg" style="flex:1;min-width:180px;margin:0">
+              <label>Student</label>
+              <select id="bonus-student-sel"><option value="">Select test above first</option></select>
+            </div>
+            <div class="fg" style="margin:0;width:120px">
+              <label>Bonus Marks</label>
+              <input type="number" id="bonus-student-marks" placeholder="e.g. 2" step="0.5">
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="applyStudentBonus()"><i class="fas fa-check"></i> Apply</button>
+          </div>
+          <p style="font-size:11px;color:#888;margin:0">Loads students who attempted the test selected above.</p>
+        </div>
+      </div>
     </div>
 
     <!-- CREATE TEST TAB -->
@@ -386,7 +426,10 @@ textarea{resize:vertical}
       </div>
       <!-- Admin Chat Panel -->
       <div class="form-card" style="max-width:580px;margin-bottom:16px">
-        <div class="fc-title" style="color:var(--gold)"><i class="fas fa-comments"></i> Admin Chat (visible to all students)</div>
+        <div class="fc-title" style="color:var(--gold);display:flex;justify-content:space-between;align-items:center">
+          <span><i class="fas fa-comments"></i> Admin Chat (visible to all students)</span>
+          <button class="btn btn-outline btn-sm" onclick="clearAllChat()" style="font-size:11px;padding:4px 10px"><i class="fas fa-trash"></i> Clear All</button>
+        </div>
         <div id="admin-chat-box" style="height:260px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;background:#fafaf8;margin-bottom:10px;display:flex;flex-direction:column;gap:6px">
           <p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>
         </div>
@@ -546,6 +589,7 @@ function adminTab(tab){
   else if(tab==='cheating')loadCheatLogs();
   else if(tab==='images')loadAdminImages();
   else if(tab==='create-test')loadImagePicker();
+  else if(tab==='announce')initAdminChat();
 }
 
 // TESTS
@@ -587,8 +631,76 @@ function loadDelTestSelect(){
   api('/api/admin/tests').then(function(tests){
     var sel=document.getElementById('del-test-sel');if(!sel)return;
     sel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t._id+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
+    var bsel=document.getElementById('bonus-test-sel');
+    if(bsel){
+      bsel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t._id+'" data-bonus="'+(t.bonusMarks||0)+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
+    }
   }).catch(function(){});
 }
+
+// ── BONUS MARKS ──────────────────────────────────────────────────────────────
+function onBonusTestSelect(){
+  var sel=document.getElementById('bonus-test-sel');
+  var testId=sel&&sel.value;
+  var cur=document.getElementById('bonus-test-current');
+  var studentSel=document.getElementById('bonus-student-sel');
+  if(!testId){
+    if(cur)cur.textContent='';
+    if(studentSel)studentSel.innerHTML='<option value="">Select test above first</option>';
+    return;
+  }
+  var opt=sel.options[sel.selectedIndex];
+  var currentBonus=opt?(opt.getAttribute('data-bonus')||'0'):'0';
+  if(cur)cur.textContent='Currently applied test-wide bonus: '+currentBonus+' marks';
+  var mInp=document.getElementById('bonus-test-marks');
+  if(mInp)mInp.value=currentBonus!=='0'?currentBonus:'';
+
+  if(studentSel){
+    studentSel.innerHTML='<option value="">Loading students...</option>';
+    api('/api/admin/tests/'+testId+'/results').then(function(results){
+      if(!results.length){studentSel.innerHTML='<option value="">No attempts for this test yet</option>';return;}
+      studentSel.innerHTML='<option value="">Select a student</option>'+results.map(function(r){
+        var name=(r.userId&&r.userId.name)||r.userName||'Unknown';
+        return '<option value="'+r._id+'" data-bonus="'+(r.bonusMarks||0)+'">'+esc(name)+' — '+r.obtainedMarks+'/'+r.totalMarks+'</option>';
+      }).join('');
+    }).catch(function(){studentSel.innerHTML='<option value="">Failed to load students</option>';});
+  }
+}
+
+function applyTestBonus(){
+  var sel=document.getElementById('bonus-test-sel');
+  var testId=sel&&sel.value;
+  if(!testId){toast('Select a test first','error');return;}
+  var mInp=document.getElementById('bonus-test-marks');
+  var marks=parseFloat(mInp&&mInp.value);
+  if(isNaN(marks)){toast('Enter a bonus marks value','error');return;}
+  var testName=sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].text||'';
+  if(!confirm('Apply '+marks+' bonus marks to EVERY student who took "'+testName+'"?'))return;
+  api('/api/admin/tests/'+testId+'/bonus',{method:'POST',body:JSON.stringify({bonusMarks:marks})}).then(function(){
+    toast('Bonus marks applied to all students for this test','success');
+    loadDelTestSelect();
+    onBonusTestSelect();
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+function applyStudentBonus(){
+  var testSel=document.getElementById('bonus-test-sel');
+  var studentSel=document.getElementById('bonus-student-sel');
+  var resultId=studentSel&&studentSel.value;
+  if(!testSel||!testSel.value){toast('Select a test first','error');return;}
+  if(!resultId){toast('Select a student first','error');return;}
+  var mInp=document.getElementById('bonus-student-marks');
+  var marks=parseFloat(mInp&&mInp.value);
+  if(isNaN(marks)){toast('Enter a bonus marks value','error');return;}
+  var studentName=studentSel.options[studentSel.selectedIndex]&&studentSel.options[studentSel.selectedIndex].text||'';
+  if(!confirm('Apply '+marks+' bonus marks to '+studentName+'?'))return;
+  api('/api/admin/results/'+resultId+'/bonus',{method:'POST',body:JSON.stringify({bonusMarks:marks})}).then(function(){
+    toast('Bonus marks applied to this student','success');
+    onBonusTestSelect();
+    if(mInp)mInp.value='';
+  }).catch(function(err){toast(err.message,'error');});
+}
+
 function deleteMongoResultsOnly(){
   var sel=document.getElementById('del-test-sel');
   var bSel=document.getElementById('del-batch-sel');
@@ -1066,44 +1178,52 @@ function appendAdminChatMsg(msg){
   var box=document.getElementById('admin-chat-box');if(!box)return;
   var empty=box.querySelector('p');if(empty&&box.children.length===1)box.innerHTML='';
   var div=document.createElement('div');
-  // Admin messages: gold bg, left-aligned. Student messages: white bg, left-aligned
-  div.style.cssText='padding:7px 11px;border-radius:10px;max-width:85%;word-break:break-word;font-size:13px;align-self:flex-start;'+(msg.isAdmin?'background:#fef3c7;border:1px solid #f0c040':'background:#fff;border:1px solid #e2e8f0');
-  div.innerHTML='<span style="font-weight:700;font-size:11px;color:'+(msg.isAdmin?'#b7791f':'#4a5568')+'">'+(msg.isAdmin?'👑 Admin':esc(msg.name)+' <span style="opacity:0.6;font-weight:400">('+esc(msg.batch)+')</span>')+'</span> <span style="opacity:0.5;font-size:10px">'+msg.time+'</span><br>'+esc(msg.text);
+  div.setAttribute('data-msgid',String(msg._id||msg.id||''));
+  div.style.cssText='padding:7px 11px;border-radius:10px;max-width:85%;word-break:break-word;font-size:13px;align-self:flex-start;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;'+(msg.isAdmin?'background:#fef3c7;border:1px solid #f0c040':'background:#fff;border:1px solid #e2e8f0');
+  var msgId=msg._id||msg.id;
+  div.innerHTML='<span><span style="font-weight:700;font-size:11px;color:'+(msg.isAdmin?'#b7791f':'#4a5568')+'">'+(msg.isAdmin?'👑 Admin':esc(msg.name)+' <span style="opacity:0.6;font-weight:400">('+esc(msg.batch)+')</span>')+'</span> <span style="opacity:0.5;font-size:10px">'+msg.time+'</span><br>'+esc(msg.text)+'</span>'+
+    (msgId?'<button onclick="deleteChatMsg(\''+msgId+'\')" title="Delete" style="background:none;border:none;color:#c53030;cursor:pointer;font-size:12px;flex-shrink:0"><i class="fas fa-trash"></i></button>':'');
   box.appendChild(div);
   box.scrollTop=box.scrollHeight;
 }
+function deleteChatMsg(id){
+  if(!confirm('Delete this message?'))return;
+  api('/api/chat/messages/'+id,{method:'DELETE'}).then(function(){
+    var el=document.querySelector('[data-msgid="'+id+'"]');if(el)el.remove();
+  }).catch(function(e){toast(e.message,'error');});
+}
+function clearAllChat(){
+  if(!confirm('Delete ALL chat messages permanently? This cannot be undone.'))return;
+  api('/api/chat/messages',{method:'DELETE'}).then(function(r){
+    toast('Cleared '+(r.deleted||0)+' messages','success');
+    var box=document.getElementById('admin-chat-box');
+    if(box)box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>';
+  }).catch(function(e){toast(e.message,'error');});
+}
 function initAdminChat(){
   if(window.adminSocket)return;
-  // Load cached messages from localStorage (same key as student chat)
-  try{
-    var CHAT_KEY='aiits_chat_v1';
-    var raw=localStorage.getItem(CHAT_KEY);
-    if(raw){
-      var data=JSON.parse(raw);
-      var msgs=data.msgs||[];
-      var box=document.getElementById('admin-chat-box');
-      if(box&&msgs.length>0){
-        box.innerHTML='';
-        msgs.forEach(function(m){appendAdminChatMsg(m);});
-      }
-    }
-  }catch(e){}
-  try{
-    window.adminSocket=io({withCredentials:true,transports:['polling']});
-    window.adminSocket.on('chat-message',function(msg){
-      // Also save to localStorage so students see admin messages after refresh
-      try{
-        var CHAT_KEY='aiits_chat_v1';
-        var raw=localStorage.getItem(CHAT_KEY);
-        var data=raw?JSON.parse(raw):{ts:Date.now(),msgs:[]};
-        data.msgs.push(msg);
-        data.msgs=data.msgs.slice(-200);
-        localStorage.setItem(CHAT_KEY,JSON.stringify(data));
-      }catch(e){}
-      appendAdminChatMsg(msg);
-    });
-    window.adminSocket.on('connect',function(){console.log('[AIITS Admin] Chat connected');});
-  }catch(e){console.error('Admin socket error:',e);}
+  // Load persisted history from the server (second Mongo DB — stays until an admin deletes it)
+  var box=document.getElementById('admin-chat-box');
+  if(box)box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Loading messages...</p>';
+  api('/api/chat/messages').then(function(msgs){
+    if(!box)return;
+    box.innerHTML='';
+    if(!msgs.length){box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>';return;}
+    msgs.forEach(function(m){appendAdminChatMsg(m);});
+  }).catch(function(){
+    if(box)box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Could not load chat history.</p>';
+  });
+
+  window.adminSocket=io({withCredentials:true,transports:['polling']});
+  window.adminSocket.on('chat-message',function(msg){appendAdminChatMsg(msg);});
+  window.adminSocket.on('chat-message-deleted',function(d){
+    var el=document.querySelector('[data-msgid="'+d.id+'"]');if(el)el.remove();
+  });
+  window.adminSocket.on('chat-cleared',function(){
+    var b=document.getElementById('admin-chat-box');
+    if(b)b.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>';
+  });
+  window.adminSocket.on('connect',function(){console.log('[AIITS Admin] Chat connected');});
 }
 
 // ADMIN CHAT MUTE TOGGLE

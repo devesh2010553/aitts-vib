@@ -9,7 +9,8 @@ const testSchema = new mongoose.Schema({
   isPublished:{type:Boolean,default:false}, startTime:{type:Date}, endTime:{type:Date},
   adEnabled:{type:Boolean,default:false}, adImages:[{type:mongoose.Schema.Types.ObjectId,ref:'AdImage'}],
   adRedirectUrl:{type:String,default:''}, adHtml:{type:String,default:''},
-  attemptCount:{type:Number,default:0}, targetBatches:[{type:String,enum:['11','12','dropper']}]
+  attemptCount:{type:Number,default:0}, targetBatches:[{type:String,enum:['11','12','dropper']}],
+  bonusMarks:{type:Number,default:0}
 }, { timestamps:true });
 testSchema.pre('save', function(next) {
   if (this.questions&&this.questions.length) this.totalMarks = this.questions.reduce((s,q)=>s+q.marks,0);

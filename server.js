@@ -132,14 +132,13 @@ io.on('connection', socket => {
   }
 
   // Public chat
-  socket.on('chat-message', (data) => {
+  socket.on('chat-message', async (data) => {
     const adminSender = data.isAdmin && isAdminSocket();
     // Block if: global mute (non-admin) OR sender is individually blocked
     if (chatMuted && !adminSender) return;
     const uid = (data.uid || '').slice(0, 64);
     if (blockedUids.has(uid) && !adminSender) return;
     const msg = {
-      id:      Date.now() + Math.random().toString(36).slice(2),
       name:    adminSender ? 'Admin' : (data.name || 'Student').slice(0, 40),
       uid:     adminSender ? '' : uid,
       batch:   adminSender ? '' : (data.batch || '').slice(0, 20),
@@ -147,7 +146,14 @@ io.on('connection', socket => {
       isAdmin: adminSender,
       time:    new Date().toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' }),
     };
-    io.emit('chat-message', msg);
+    try {
+      const ChatMessage = require('./backend/models/ChatMessage');
+      const saved = await ChatMessage.create(msg);
+      io.emit('chat-message', { ...msg, _id: saved._id, id: saved._id });
+    } catch(e) {
+      console.error('[CHAT] save failed:', e.message);
+      io.emit('chat-message', { ...msg, id: Date.now() + Math.random().toString(36).slice(2) });
+    }
   });
 
   // Admin mute/unmute all (also broadcast so clients persist it)
@@ -178,4 +184,5 @@ server.listen(PORT,'0.0.0.0',() => console.log('[SERVER] AIITS on port',PORT));
 mongoose.connect(process.env.MONGODB_URI,{ serverSelectionTimeoutMS:15000 })
   .then(()=>console.log('[DB] MongoDB connected'))
   .catch(err=>console.error('[DB] MongoDB error:',err.message));
+require('./backend/config/chatDb'); // second connection, dedicated to chat storage (MONGODB_URI2)
 module.exports = { app, io };

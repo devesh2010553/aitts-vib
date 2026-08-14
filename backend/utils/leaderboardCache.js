@@ -56,12 +56,21 @@ async function getCached(cacheKey, scope, meta, computeFn) {
  */
 function invalidate({ testId, batch } = {}) {
   const or = [];
-  // Cumulative/overall/normalised views change for the test's batch AND for
-  // "all batches" whenever any result in that batch changes.
-  if (batch) { or.push({ scope: { $in: ['class-cumulative','overall','normalised'] }, batch }); }
-  or.push({ scope: { $in: ['class-cumulative','overall','normalised'] }, batch: '' });
+
+  // A result change in one batch affects that batch's cumulative leaderboard
+  // and the cross-batch "All" view. If no batch is supplied, treat the change
+  // as global (e.g. a test's totalMarks/targetBatches/isPublished changed)
+  // and invalidate every cumulative snapshot.
+  if (batch) {
+    or.push({ scope: { $in: ['class-cumulative','overall','normalised'] }, batch });
+    or.push({ scope: { $in: ['class-cumulative','overall','normalised'] }, batch: '' });
+  } else {
+    or.push({ scope: { $in: ['class-cumulative','overall','normalised'] } });
+  }
+
   // Per-test leaderboards only change for the specific test.
   if (testId) { or.push({ scope: 'per-test', testId }); }
+
   if (!or.length) return Promise.resolve();
   return LeaderboardSnapshot.deleteMany({ $or: or }).catch(() => {});
 }

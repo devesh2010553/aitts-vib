@@ -1668,7 +1668,7 @@ function loadClassLeaderboard(batch){
     lbClassData=data;
     var sel=document.getElementById('lb-test-select');
     if(sel){
-      sel.innerHTML='<option value="">Cumulative (avg % across all '+data.totalTests+' test'+(data.totalTests===1?'':'s')+')</option>'+
+      sel.innerHTML='<option value="">Cumulative (student-specific applicable tests)</option>'+
         (data.tests||[]).map(function(t){return '<option value="'+t._id+'">'+esc(t.title)+'</option>';}).join('');
       sel.value='';
     }
@@ -1678,14 +1678,14 @@ function loadClassLeaderboard(batch){
 
 function renderClassCumulative(data){
   var c=document.getElementById('leaderboard-table');if(!c)return;
-  var showBatch=!data.batch; // "All" view spans batches, so show which batch each student is in
+  var showBatch=!data.batch; // "All" view spans batches, so show each student's batch
   var note=document.getElementById('lb-rule-note');
-  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: marks obtained ÷ total marks across all '+data.totalTests+' published test'+(data.totalTests===1?'':'s')+' in scope ('+data.totalPossible+'). A skipped test still counts toward the total — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
+  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Cumulative ranking uses each student\'s own applicable published tests. An applicable but skipped test counts as zero; a test for another class/batch is not included. Ties broken by time taken.';
   if(!data.leaderboard.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
   c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th>'+(showBatch?'<th>Batch</th>':'')+'<th>Tests Taken</th><th>Avg %</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
     data.leaderboard.map(function(u,i){
       var cls=i<3?'rank-'+(i+1):'';
-      return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td>'+(showBatch?'<td>'+esc(u.batch||'--')+'</td>':'')+'<td>'+u.testsTaken+'/'+data.totalTests+'</td><td>'+pctSpan(u.avgPercentage)+'</td><td>'+u.totalObtained+'/'+u.totalPossible+'</td><td>'+fmtTime(u.totalTime)+'</td></tr>';
+      return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td>'+(showBatch?'<td>'+esc(u.batch||'--')+'</td>':'')+'<td>'+u.testsTaken+'/'+u.totalTests+'</td><td>'+pctSpan(u.avgPercentage)+'</td><td>'+u.totalObtained+'/'+u.totalPossible+'</td><td>'+fmtTime(u.totalTime)+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
 

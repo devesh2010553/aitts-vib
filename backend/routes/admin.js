@@ -39,14 +39,18 @@ router.get('/tests', async (req, res) => {
 });
 
 router.post('/tests', async (req, res) => {
-  try { res.status(201).json({ message: 'Test created', test: await new Test(req.body).save() }); }
-  catch(err) { res.status(500).json({ error: err.message }); }
+  try {
+    const test = await new Test(req.body).save();
+    invalidate(); // A newly published/updated test changes applicable denominators.
+    res.status(201).json({ message: 'Test created', test });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/tests/:id', async (req, res) => {
   try {
     const test = await Test.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!test) return res.status(404).json({ error: 'Not found' });
+    invalidate({ testId: test._id }); // targetBatches/totalMarks/isPublished can change denominators.
     res.json({ message: 'Updated', test });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -57,13 +61,16 @@ router.patch('/tests/:id/publish', async (req, res) => {
     if (!test) return res.status(404).json({ error: 'Not found' });
     test.isPublished = !test.isPublished;
     await test.save();
+    invalidate({ testId: test._id });
     res.json({ isPublished: test.isPublished });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/tests/:id', async (req, res) => {
   try {
-    await Promise.all([Test.findByIdAndDelete(req.params.id), Result.deleteMany({ testId: req.params.id })]);
+    const testId = req.params.id;
+    await Promise.all([Test.findByIdAndDelete(testId), Result.deleteMany({ testId })]);
+    invalidate({ testId });
     res.json({ message: 'Test and all results deleted' });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });

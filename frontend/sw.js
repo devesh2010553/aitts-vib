@@ -25,7 +25,7 @@ self.addEventListener('fetch', function(e) {
 self.addEventListener('push', function(e) {
   var d={};
   try{ d=e.data?e.data.json():{};} catch(err){}
-  e.waitUntil(self.registration.showNotification(d.title||'AIITS',{ body:d.body||'New update', icon:'/images/icon-192.png', badge:'/images/icon-192.png', tag:'aiits', data:{ url:d.url||'/' }, vibrate:[200,100,200] }));
+  e.waitUntil(self.registration.showNotification(d.title||'AITTS',{ body:d.body||'New update', icon:'/images/icon-192.png', badge:'/images/icon-192.png', tag:'aiits', data:{ url:d.url||'/' }, vibrate:[200,100,200] }));
 });
 self.addEventListener('notificationclick', function(e) {
   e.notification.close();

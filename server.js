@@ -102,9 +102,9 @@ app.get('/api/debug-firebase', (_,res) => {
     FIREBASE_SERVICE_ACCOUNT_JSON:process.env.FIREBASE_SERVICE_ACCOUNT_JSON? 'SET' : 'MISSING',
   });
 });
-app.get('/robots.txt', (_,res) => { res.type('text/plain'); res.send('User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://aiits-msc.onrender.com/sitemap.xml'); });
+app.get('/robots.txt', (_,res) => { res.type('text/plain'); res.send('User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: https://aiits.onrender.com/sitemap.xml'); });
 app.get('/sitemap.xml', (_,res) => {
-  const base='https://aiits-msc.onrender.com', d=new Date().toISOString().split('T')[0];
+  const base='https://aiits.onrender.com', d=new Date().toISOString().split('T')[0];
   res.type('application/xml');
   res.send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>'+base+'/</loc><lastmod>'+d+'</lastmod><priority>1.0</priority></url><url><loc>'+base+'/register</loc><priority>0.8</priority></url><url><loc>'+base+'/login</loc><priority>0.7</priority></url></urlset>');
 });
@@ -114,6 +114,7 @@ app.get('/ad856eyqafggg',           (_,res) => res.sendFile(path.join(__dirname,
 
 app.use('/api/auth',     require('./backend/routes/auth'));
 app.use('/api/admin',    require('./backend/routes/admin'));
+app.use('/api/admin/ai', require('./backend/routes/aiImport')); // AI PDF-to-Test import — admin-only, see backend/routes/aiImport.js
 app.use('/api/tests',    require('./backend/routes/tests'));
 app.use('/api/results',  require('./backend/routes/results'));
 app.use('/api/rankings', require('./backend/routes/rankings'));

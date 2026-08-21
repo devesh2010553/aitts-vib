@@ -5,16 +5,16 @@
 <meta name="google-adsense-account" content="ca-pub-3517811725655802">
   <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="google-site-verification" content="v566CVbDNVYH-ulVTAnUDlp2qta_Gl0oF3LIm4TtuKU">
-<title>AIITS - All India Topicwise Test Series | MS Chauhan | Vibrant Academy</title>
+<title>AITTS - All India Topicwise Test Series | MS Chauhan | Vibrant Academy</title>
 <meta name="description" content="All India Topicwise Test Series by MS Chauhan, HOD Vibrant Academy. Topic-wise JEE tests with real-time all-India rankings.">
 <meta name="robots" content="index,follow">
-<meta property="og:title" content="AIITS - All India Topicwise Test Series by MS Chauhan">
+<meta property="og:title" content="AITTS - All India Topicwise Test Series by MS Chauhan">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://aiits-msc.onrender.com">
+<meta property="og:url" content="https://aiits.onrender.com">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#b8860b">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="AIITS">
+<meta name="apple-mobile-web-app-title" content="AITTS">
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3517811725655802" crossorigin="anonymous"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -326,9 +326,15 @@ textarea{resize:vertical}
 <body>
 <script type="module">/* FIREBASE_CONFIG_PLACEHOLDER */</script>
 
+<!-- PWA install prompt — hidden by default; JS shows it only for a visitor
+     who hasn't installed the app yet (see pwa install script near end of body) -->
+<button id="pwa-install-btn" onclick="installApp()" style="display:none;position:fixed;right:16px;bottom:16px;z-index:9999;background:linear-gradient(135deg,var(--gold-light),var(--gold));color:#fff;border:none;border-radius:999px;padding:11px 18px;font-family:var(--font);font-weight:700;font-size:13px;box-shadow:0 4px 18px rgba(184,134,11,0.4);cursor:pointer;display:none;align-items:center;gap:8px">
+  <i class="fas fa-download"></i> Install App
+</button>
+
 <div id="loading-screen" class="loading-screen">
   <div style="text-align:center">
-    <div class="loader-logo-wrap"><div class="loader-ring"></div><div class="loader-logo-inner">AIITS</div></div>
+    <div class="loader-logo-wrap"><div class="loader-ring"></div><div class="loader-logo-inner">AITTS</div></div>
     <div class="loader-bar"><div class="loader-fill"></div></div>
     <p style="color:var(--text-muted);font-size:11px;letter-spacing:2px;text-transform:uppercase">All India Topicwise Test Series</p>
   </div>
@@ -341,7 +347,7 @@ textarea{resize:vertical}
 <!-- HOME PAGE -->
 <div id="page-home" class="page active">
   <nav class="navbar">
-    <div class="nav-brand"><div class="nav-logo">AIITS</div><div class="nav-sub">by MS Chauhan</div></div>
+    <div class="nav-brand"><div class="nav-logo">AITTS</div><div class="nav-sub">by MS Chauhan</div></div>
     <div class="nav-center desktop-only">
       <a class="nav-link" onclick="scrollToSection('features')">Features</a>
       <a class="nav-link" onclick="scrollToSection('about')">About</a>
@@ -378,7 +384,7 @@ textarea{resize:vertical}
   </section>
   <section class="features-sec" id="features">
     <div class="sec-container">
-      <div class="sec-label">Why AIITS?</div>
+      <div class="sec-label">Why AITTS?</div>
       <h2 class="sec-title">Everything you need to <span style="color:var(--gold)">excel</span></h2>
       <div class="feat-grid">
         <div class="feat-card"><div class="feat-icon"><i class="fas fa-bolt"></i></div><h3>Real-Time Rankings</h3><p>All India rank updates live as students submit. Separate for Class 11, 12 and Droppers.</p></div>
@@ -395,11 +401,11 @@ textarea{resize:vertical}
       <div class="about-text">
         <div class="sec-label">About</div>
         <h2 class="sec-title">MS Chauhan <span style="color:var(--gold)">Vibrant Academy</span></h2>
-        <p>AIITS is designed by MS Chauhan, Head of Department at Vibrant Academy. Every test builds deep conceptual understanding and exam-readiness.</p>
+        <p>AITTS is designed by MS Chauhan, Head of Department at Vibrant Academy. Every test builds deep conceptual understanding and exam-readiness.</p>
         <p style="margin-top:10px">Separate leaderboards for Class 11, Class 12, and Dropper batches ensure fair comparison.</p>
       </div>
       <div class="about-card">
-        <div class="about-card-logo">AIITS</div>
+        <div class="about-card-logo">AITTS</div>
         <div class="about-card-name">MS Chauhan</div>
         <div class="about-card-role">HOD - Vibrant Academy</div>
         <div class="about-card-tagline">"Believe in Excellence"</div>
@@ -415,7 +421,7 @@ textarea{resize:vertical}
   </section>
   <footer class="footer">
     <div class="footer-inner">
-      <div><strong style="color:var(--gold)">AIITS</strong> -- All India Topicwise Test Series</div>
+      <div><strong style="color:var(--gold)">AITTS</strong> -- All India Topicwise Test Series</div>
       <div>by MS Chauhan, HOD - Vibrant Academy</div>
       <div class="footer-copy">2026 Vibrant Academy. All rights reserved.</div>
     </div>
@@ -425,7 +431,7 @@ textarea{resize:vertical}
 <!-- REGISTER PAGE -->
 <div id="page-register" class="page">
   <div class="auth-layout">
-    <div class="auth-panel-left"><div class="auth-brand"><div class="auth-logo">AIITS</div><p>Create your account</p><p class="auth-by">by MS Chauhan - Vibrant Academy</p></div></div>
+    <div class="auth-panel-left"><div class="auth-brand"><div class="auth-logo">AITTS</div><p>Create your account</p><p class="auth-by">by MS Chauhan - Vibrant Academy</p></div></div>
     <div class="auth-panel-right">
       <button class="back-btn" onclick="showPage('page-home')"><i class="fas fa-arrow-left"></i> Back</button>
       <h2 class="auth-title">Create Account</h2>
@@ -463,7 +469,7 @@ textarea{resize:vertical}
 <!-- LOGIN PAGE -->
 <div id="page-login" class="page">
   <div class="auth-layout">
-    <div class="auth-panel-left"><div class="auth-brand"><div class="auth-logo">AIITS</div><p>Welcome back!</p><p class="auth-by">by MS Chauhan - Vibrant Academy</p></div></div>
+    <div class="auth-panel-left"><div class="auth-brand"><div class="auth-logo">AITTS</div><p>Welcome back!</p><p class="auth-by">by MS Chauhan - Vibrant Academy</p></div></div>
     <div class="auth-panel-right">
       <button class="back-btn" onclick="showPage('page-home')"><i class="fas fa-arrow-left"></i> Back</button>
       <h2 class="auth-title">Login</h2>
@@ -480,7 +486,7 @@ textarea{resize:vertical}
 <!-- FORGOT PASSWORD PAGE -->
 <div id="page-forgot" class="page">
   <div class="auth-layout">
-    <div class="auth-panel-left"><div class="auth-brand"><div class="auth-logo">AIITS</div><p>Reset your password</p><p class="auth-by">by MS Chauhan - Vibrant Academy</p></div></div>
+    <div class="auth-panel-left"><div class="auth-brand"><div class="auth-logo">AITTS</div><p>Reset your password</p><p class="auth-by">by MS Chauhan - Vibrant Academy</p></div></div>
     <div class="auth-panel-right">
       <button class="back-btn" onclick="showPage('page-login')"><i class="fas fa-arrow-left"></i> Back</button>
       <h2 class="auth-title">Reset Password</h2>
@@ -507,7 +513,7 @@ textarea{resize:vertical}
 <!-- STUDENT DASHBOARD -->
 <div id="page-dashboard" class="page">
   <nav class="navbar sticky-nav">
-    <div class="nav-brand"><div class="nav-logo">AIITS</div><div class="nav-sub">by MS Chauhan</div></div>
+    <div class="nav-brand"><div class="nav-logo">AITTS</div><div class="nav-sub">by MS Chauhan</div></div>
     <div class="nav-center desktop-only">
       <button class="nav-link active" onclick="switchTab('tests')"><i class="fas fa-list-alt"></i> Tests</button>
       <button class="nav-link" onclick="switchTab('my-results')"><i class="fas fa-chart-bar"></i> My Results</button>
@@ -723,7 +729,7 @@ textarea{resize:vertical}
 <div id="page-result" class="page">
   <div class="result-wrap">
     <div class="result-hero-sec">
-      <div class="res-logo">AIITS</div>
+      <div class="res-logo">AITTS</div>
       <div class="res-ring-wrap">
         <svg viewBox="0 0 160 160" class="res-svg"><circle cx="80" cy="80" r="68" fill="none" stroke="#e8e0d0" stroke-width="10"/><circle id="score-arc" cx="80" cy="80" r="68" fill="none" stroke="var(--gold)" stroke-width="10" stroke-linecap="round" stroke-dasharray="427" stroke-dashoffset="427" transform="rotate(-90 80 80)" style="transition:stroke-dashoffset 1.4s ease"/></svg>
         <div class="res-center-score">
@@ -889,6 +895,46 @@ window.addEventListener('load',function(){
   }catch(e){}
 },1500);
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(function(){});
+
+  // ── PWA install button — shown only to a visitor who hasn't installed the app ──
+  var deferredInstallPrompt=null;
+  function isStandalone(){
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+  }
+  function isIOS(){
+    return /iphone|ipad|ipod/i.test(navigator.userAgent||'') && !window.MSStream;
+  }
+  function showInstallBtn(){ var b=document.getElementById('pwa-install-btn'); if(b&&!isStandalone())b.style.display='inline-flex'; }
+  function hideInstallBtn(){ var b=document.getElementById('pwa-install-btn'); if(b)b.style.display='none'; }
+  if(!isStandalone()){
+    // Android/Chrome/Edge: the browser fires this only when install criteria
+    // are met AND the app isn't already installed — exactly the "not
+    // installed" condition we want, no manual detection needed.
+    window.addEventListener('beforeinstallprompt',function(e){
+      e.preventDefault();
+      deferredInstallPrompt=e;
+      showInstallBtn();
+    });
+    window.addEventListener('appinstalled',function(){
+      deferredInstallPrompt=null;
+      hideInstallBtn();
+      toast('AITTS installed!','success');
+    });
+    // iOS Safari never fires beforeinstallprompt (no programmatic install API
+    // exists there) — show the button anyway so iOS visitors get the manual
+    // "Add to Home Screen" instructions instead of no option at all.
+    if(isIOS())showInstallBtn();
+  }
+  window.installApp=function(){
+    if(deferredInstallPrompt){
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt.userChoice.then(function(){ deferredInstallPrompt=null; hideInstallBtn(); }).catch(function(){});
+    } else if(isIOS()){
+      toast('Tap the Share icon, then "Add to Home Screen" to install AITTS','info',6000);
+    } else {
+      hideInstallBtn();
+    }
+  };
 });
 
 function checkAuth(){
@@ -1164,7 +1210,7 @@ function showAdOverlay(images,onDone){
     overlay.innerHTML=
       '<div style="max-width:600px;width:100%;text-align:center">'+
       '<div style="background:linear-gradient(135deg,#b8860b,#e6c200);padding:8px 20px;border-radius:8px 8px 0 0;font-size:13px;font-weight:700;color:#0a0a1a;display:flex;align-items:center;justify-content:space-between">'+
-      '<span>AIITS -- Advertisement</span>'+
+      '<span>AITTS -- Advertisement</span>'+
       '<span id="ad-timer-txt" style="font-size:12px">Starting in '+secondsLeft+'s</span>'+
       '</div>'+
       '<div style="background:#111;border-radius:0 0 8px 8px;overflow:hidden;position:relative">'+
@@ -1545,7 +1591,7 @@ function loadStudentGallery(){
 function openFeedback(){var m=document.getElementById('feedback-modal');if(m)m.classList.remove('hidden');}
 function submitFeedback(){
   var text=gv('feedback-text');if(!text){toast('Please write your feedback','error');return;}
-  var msg=encodeURIComponent('AIITS Feedback: '+text);
+  var msg=encodeURIComponent('AITTS Feedback: '+text);
   window.open('https://www.instagram.com/devesh_sharm.a','_blank','noopener');
   closeModal('feedback-modal');
   toast('Please send your feedback on Instagram @devesh_sharm.a','info',5000);
@@ -1668,7 +1714,8 @@ function loadClassLeaderboard(batch){
     lbClassData=data;
     var sel=document.getElementById('lb-test-select');
     if(sel){
-      sel.innerHTML='<option value="">Cumulative (student-specific applicable tests)</option>'+
+      var cumLabel = batch ? ('Cumulative (avg % across all '+data.totalTests+' test'+(data.totalTests===1?'':'s')+')') : 'Cumulative (avg % — each student vs. their own class\'s tests)';
+      sel.innerHTML='<option value="">'+cumLabel+'</option>'+
         (data.tests||[]).map(function(t){return '<option value="'+t._id+'">'+esc(t.title)+'</option>';}).join('');
       sel.value='';
     }
@@ -1678,13 +1725,26 @@ function loadClassLeaderboard(batch){
 
 function renderClassCumulative(data){
   var c=document.getElementById('leaderboard-table');if(!c)return;
-  var showBatch=!data.batch; // "All" view spans batches, so show each student's batch
+  var showBatch=!data.batch; // "All" view spans batches, so show which batch each student is in
   var note=document.getElementById('lb-rule-note');
-  if(note)note.innerHTML='<i class="fas fa-info-circle"></i> Cumulative ranking uses each student\'s own applicable published tests. An applicable but skipped test counts as zero; a test for another class/batch is not included. Ties broken by time taken.';
+  if(note){
+    if(showBatch){
+      // "All": each student's % is computed against only the tests
+      // applicable to THEIR OWN class/batch — not one shared total across
+      // every class. data.totalTests/totalPossible below describe the full
+      // set of published tests shown in the dropdown, not a per-student denominator.
+      note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: marks obtained ÷ total marks across each student\'s OWN applicable published tests (a Class 11 student is judged only against tests available to Class 11, not Class 12\'s). A skipped-but-applicable test still counts toward that total — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
+    } else {
+      note.innerHTML='<i class="fas fa-info-circle"></i> Ranked by: marks obtained ÷ total marks across all '+data.totalTests+' published test'+(data.totalTests===1?'':'s')+' in scope ('+data.totalPossible+'). A skipped test still counts toward the total — consistent performers rank above one-lucky-test scores. Ties broken by time taken.';
+    }
+  }
   if(!data.leaderboard.length){c.innerHTML='<p style="text-align:center;color:var(--text-muted);padding:28px">No data yet.</p>';return;}
   c.innerHTML='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th>'+(showBatch?'<th>Batch</th>':'')+'<th>Tests Taken</th><th>Avg %</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
     data.leaderboard.map(function(u,i){
       var cls=i<3?'rank-'+(i+1):'';
+      // u.testsTaken/u.totalTests/u.totalPossible are each student's OWN
+      // values (their own applicable test set) — never the page-level
+      // data.totalTests, which would combine tests across every batch.
       return '<tr class="'+cls+'"><td>'+(i+1)+'</td><td>'+medalName(i,u.name)+'</td>'+(showBatch?'<td>'+esc(u.batch||'--')+'</td>':'')+'<td>'+u.testsTaken+'/'+u.totalTests+'</td><td>'+pctSpan(u.avgPercentage)+'</td><td>'+u.totalObtained+'/'+u.totalPossible+'</td><td>'+fmtTime(u.totalTime)+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }

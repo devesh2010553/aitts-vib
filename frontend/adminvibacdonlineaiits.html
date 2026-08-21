@@ -209,6 +209,7 @@ textarea{resize:vertical}
     <div class="nav-links">
       <button class="nav-link active" onclick="adminTab('tests')"><i class="fas fa-list-alt"></i> Tests</button>
       <button class="nav-link" onclick="adminTab('create-test')"><i class="fas fa-plus-circle"></i> Create</button>
+      <button class="nav-link" onclick="adminTab('ai-import')"><i class="fas fa-file-pdf"></i> AI Import</button>
       <button class="nav-link" onclick="adminTab('images')"><i class="fas fa-images"></i> Images</button>
       <button class="nav-link" onclick="adminTab('announce')"><i class="fas fa-bullhorn"></i> Push</button>
       <button class="nav-link" onclick="adminTab('students')"><i class="fas fa-users"></i> Students</button>
@@ -220,6 +221,7 @@ textarea{resize:vertical}
   <div class="mob-nav">
     <button class="mob-btn active" onclick="adminTab('tests')"><i class="fas fa-list-alt"></i><span>Tests</span></button>
     <button class="mob-btn" onclick="adminTab('create-test')"><i class="fas fa-plus"></i><span>Create</span></button>
+    <button class="mob-btn" onclick="adminTab('ai-import')"><i class="fas fa-file-pdf"></i><span>AI Import</span></button>
     <button class="mob-btn" onclick="adminTab('images')"><i class="fas fa-images"></i><span>Images</span></button>
     <button class="mob-btn" onclick="adminTab('announce')"><i class="fas fa-bullhorn"></i><span>Push</span></button>
     <button class="mob-btn" onclick="adminTab('students')"><i class="fas fa-users"></i><span>Students</span></button>
@@ -385,6 +387,11 @@ textarea{resize:vertical}
       </div>
     </div>
 
+    <!-- AI IMPORT TAB — content lazy-loaded by ai-import.js, never fetched on normal page load -->
+    <div id="atab-ai-import" class="atab">
+      <p style="color:var(--text-muted);padding:20px;text-align:center"><i class="fas fa-spinner fa-spin"></i> Loading...</p>
+    </div>
+
     <!-- IMAGES TAB -->
     <div id="atab-images" class="atab">
       <div class="dtab-header">
@@ -443,7 +450,7 @@ textarea{resize:vertical}
         <div class="fc-title"><i class="fas fa-paper-plane"></i> Send Push Notification to All Students</div>
         <div class="fg"><label>Title *</label><input type="text" id="ann-title" placeholder="e.g. New test live now!"></div>
         <div class="fg mt-8"><label>Message *</label><textarea id="ann-body" rows="3" placeholder="Announcement text..."></textarea></div>
-        <div class="fg mt-8"><label>Link URL (optional)</label><input type="url" id="ann-url" placeholder="https://aiits-msc.onrender.com" value="https://aiits-msc.onrender.com"></div>
+        <div class="fg mt-8"><label>Link URL (optional)</label><input type="url" id="ann-url" placeholder="https://aiits.onrender.com" value="https://aiits.onrender.com"></div>
         <button class="btn btn-gold mt-12" onclick="sendAnnouncement()"><i class="fas fa-paper-plane"></i> Send Push to All</button>
       </div>
     </div>
@@ -590,6 +597,16 @@ function adminTab(tab){
   else if(tab==='images')loadAdminImages();
   else if(tab==='create-test')loadImagePicker();
   else if(tab==='announce')initAdminChat();
+  else if(tab==='ai-import')loadAiImportTab();
+}
+var _aiImportLoaded=false;
+function loadAiImportTab(){
+  if(_aiImportLoaded){ if(window.AiImport)AiImport.init(); return; }
+  var s=document.createElement('script');
+  s.src='ai-import.js';
+  s.onload=function(){ _aiImportLoaded=true; if(window.AiImport)AiImport.init(); };
+  s.onerror=function(){ var c=document.getElementById('atab-ai-import'); if(c)c.innerHTML='<p style="color:#c53030;padding:20px">Failed to load AI Import module.</p>'; };
+  document.body.appendChild(s);
 }
 
 // TESTS

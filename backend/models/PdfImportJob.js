@@ -1,10 +1,19 @@
-const mongoose = require('mongoose');
+const chatDb = require('../config/chatDb');
+const { Schema } = require('mongoose');
+// Moved to the MONGODB_URI2 connection — a single import job's base64
+// payload (original PDF + rendered page images) can run several MB, and
+// this collection was the single biggest new source of storage pressure on
+// the main database. createdTestId still stores a plain ObjectId reference
+// to a Test on the MAIN connection — that's fine, it's just an id value, no
+// cross-connection populate is ever attempted on it (see routes/aiImport.js,
+// which returns createdTestId as-is and lets the frontend fetch the real
+// Test via the normal /api/admin/tests/:id route on the main connection).
 
 // Intermediate representation for one detected question — kept separate from
 // the actual Test/questionSchema (backend/models/Test.js) until the teacher
 // reviews it, because it needs fields (confidence, source page range, raw
 // asset refs) that have no business living in the real Test schema forever.
-const draftQuestionSchema = new mongoose.Schema({
+const draftQuestionSchema = new Schema({
   number:        { type: Number },              // original question number from the PDF, if detected
   pageStart:     { type: Number },
   pageEnd:       { type: Number },
@@ -25,7 +34,7 @@ const draftQuestionSchema = new mongoose.Schema({
   flags:          [{ type: String }],               // human-readable reasons for a non-"high" confidence, e.g. "option count uncertain"
 }, { _id: false });
 
-const pdfImportJobSchema = new mongoose.Schema({
+const pdfImportJobSchema = new Schema({
   status: { type: String, enum: ['queued', 'processing', 'done', 'failed'], default: 'queued' },
   stage:  { type: String, default: 'Queued' }, // human-readable current stage, shown in the progress UI
   error:  { type: String, default: '' },
@@ -46,7 +55,7 @@ const pdfImportJobSchema = new mongoose.Schema({
 
   questions: [draftQuestionSchema],
 
-  createdTestId: { type: mongoose.Schema.Types.ObjectId, ref: 'Test', default: null }, // set once the draft Test is created
+  createdTestId: { type: Schema.Types.ObjectId, ref: 'Test', default: null }, // set once the draft Test is created — id only, no cross-connection populate performed on this field
   createdBy:     { type: String, default: '' }, // admin identifier, informational only
 
 }, { timestamps: true });
@@ -61,4 +70,4 @@ pdfImportJobSchema.index(
   { expireAfterSeconds: 14 * 24 * 60 * 60, partialFilterExpression: { status: { $in: ['done', 'failed'] } } }
 );
 
-module.exports = mongoose.model('PdfImportJob', pdfImportJobSchema);
+module.exports = chatDb.model('PdfImportJob', pdfImportJobSchema);

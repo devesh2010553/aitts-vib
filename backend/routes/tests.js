@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const Test    = require('../models/Test');
 const Result  = require('../models/Result');
+const AdImage = require('../models/AdImage'); // lives on MONGODB_URI2 — see AdImage.js
 const { authenticateStudent } = require('../middleware/auth');
 
 // Dashboard/list view — lightweight metadata only. Does NOT select `questions`
@@ -38,9 +39,14 @@ router.get('/:id', authenticateStudent, async (req, res) => {
 
 router.get('/:id/ad', authenticateStudent, async (req, res) => {
   try {
-    const test = await Test.findById(req.params.id).select('adEnabled adImages adRedirectUrl adHtml').populate('adImages','imageData redirectUrl title description').lean();
+    const test = await Test.findById(req.params.id).select('adEnabled adImages adRedirectUrl adHtml').lean();
     if (!test||!test.adEnabled||!test.adImages||!test.adImages.length) return res.json({ adEnabled:false, images:[] });
-    res.json({ adEnabled:true, images:test.adImages, adRedirectUrl:test.adRedirectUrl||'', adHtml:test.adHtml||'' });
+    // AdImage now lives on the MONGODB_URI2 connection (see models/AdImage.js)
+    // — Mongoose's automatic ref-populate only resolves models registered on
+    // the SAME connection as the parent document, so this has to be a
+    // separate explicit query instead of .populate('adImages', ...).
+    const images = await AdImage.find({ _id:{ $in:test.adImages } }).select('imageData redirectUrl title description').lean();
+    res.json({ adEnabled:true, images, adRedirectUrl:test.adRedirectUrl||'', adHtml:test.adHtml||'' });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

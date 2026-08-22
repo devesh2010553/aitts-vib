@@ -5,21 +5,25 @@
  * different provider could be swapped in later without touching the queue,
  * routes, or schema-mapping code.
  *
- * Uses xAI's Grok API, which is OpenAI-compatible (chat completions with
- * image_url content blocks) rather than Anthropic's Messages format. Called
- * directly via fetch (Node 20+ has native fetch). The API key is read from
- * process.env.XAI_API_KEY and never leaves the server (never sent to or
- * read by the frontend).
+ * Uses Groq (console.groq.com — GroqCloud, the LPU inference company; NOT
+ * the same as xAI's "Grok"). Groq's API is OpenAI-compatible (chat
+ * completions with image_url content blocks), so this is nearly identical
+ * in shape to the xAI version this replaced — only the endpoint, key env
+ * var, and default model changed. Called directly via fetch. The API key is
+ * read from process.env.GROQ_API_KEY and never leaves the server.
  *
- * Note: xAI's API is billed per-token like any other provider (no free
- * tier for API access — only their web Playground is free to try) — check
- * console.x.ai for current pricing/model names before relying on a cost
- * estimate, and confirm AI_IMPORT_MODEL below is still a valid vision model
- * there, since model names change over time.
+ * Groq's free tier is real (no credit card required) but rate-limited —
+ * expect to hit its per-minute token limit on a large, image-heavy PDF
+ * faster than on a paid tier; importQueue.js already processes one document
+ * at a time and page-batches requests, which helps, but a very long scanned
+ * paper may still need retrying later if you're rate-limited mid-import.
+ * Vision support on Groq is limited to specific models — confirm
+ * AI_IMPORT_MODEL below is still current/vision-capable at
+ * console.groq.com/docs/vision before deploying, model availability changes.
  */
 
-const MODEL = process.env.AI_IMPORT_MODEL || 'grok-4-fast';
-const API_URL = 'https://api.x.ai/v1/chat/completions';
+const MODEL = process.env.AI_IMPORT_MODEL || 'qwen/qwen3.6-27b';
+const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const SYSTEM_PROMPT = `You are a document-reconstruction engine for a JEE/NEET-style test platform. You are given pages of an existing question paper (as images and/or extracted text) and must RECONSTRUCT it exactly as a structured question list — you are NOT writing new questions.
 
@@ -88,14 +92,14 @@ function parseJsonResponse(text) {
 }
 
 async function callModel(content) {
-  if (!process.env.XAI_API_KEY) {
-    throw new Error('XAI_API_KEY is not set — configure it to enable AI PDF import.');
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error('GROQ_API_KEY is not set — configure it to enable AI PDF import.');
   }
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
     },
     body: JSON.stringify({
       model: MODEL,

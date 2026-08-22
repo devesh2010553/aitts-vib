@@ -16,7 +16,7 @@ const { extractPdf } = require('./pdfExtract');
 const aiProvider = require('./aiProvider');
 const sharp = require('sharp');
 
-const PAGES_PER_BATCH = parseInt(process.env.AI_IMPORT_PAGES_PER_BATCH) || 2;
+const PAGES_PER_BATCH = parseInt(process.env.AI_IMPORT_PAGES_PER_BATCH) || 1;
 
 const queue = [];
 let draining = false;
@@ -156,6 +156,7 @@ async function processJob(jobId) {
         result = await aiProvider.analyzeBatch({
           pageNumbers: batchPages, pageCount: extraction.pageCount,
           textByPage: extraction.textByPage, pageImages: extraction.pageImages, embeddedImages: extraction.embeddedImages,
+          scannedPages: extraction.scannedPages,
         });
       } catch (e) {
         // One bad batch shouldn't fail the whole document — flag and continue,

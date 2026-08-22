@@ -117,6 +117,8 @@ router.post('/import/:jobId/reprocess-question/:index', async (req, res) => {
     const result = await aiProvider.analyzeRegion({
       pageNumbers, pageCount: extraction.pageCount,
       textByPage: extraction.textByPage, pageImages: extraction.pageImages, embeddedImages: extraction.embeddedImages,
+      scannedPages: extraction.scannedPages,
+      forceImages: true, // a single-question reprocess is small enough (1-2 pages) to afford always sending the image, and the whole point is getting a better look at it
     });
 
     // Prefer the question matching the same original number if present in

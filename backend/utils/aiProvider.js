@@ -66,19 +66,32 @@ function buildUserContent(batch) {
   const content = [];
   content.push({ type: 'text', text: `Pages ${batch.pageNumbers.join(', ')} of a ${batch.pageCount}-page document. Reconstruct every question found on these pages, following the rules above.` });
 
+  const scannedSet = new Set(batch.scannedPages || []);
+  const relevantEmbedded = (batch.embeddedImages || []).filter(img => batch.pageNumbers.includes(img.page));
+  const pagesWithEmbedded = new Set(relevantEmbedded.map(img => img.page));
+
   for (const pageNum of batch.pageNumbers) {
     const text = batch.textByPage[pageNum - 1] || '';
     if (text) content.push({ type: 'text', text: `--- Page ${pageNum} extracted text ---\n${text}` });
-    if (batch.pageImages[pageNum]) {
+
+    // Only send the (expensive, TPM-hungry) page image when there's an
+    // actual reason to: no usable text layer (scanned page — vision is the
+    // ONLY way to read it), or a diagram was extracted from this page and
+    // the model needs to see its position/context to associate it with the
+    // right question. A normal text-only page gets text alone. This is what
+    // keeps a single request under Groq's free-tier TPM ceiling — sending
+    // every page's image unconditionally (the original design) blew well
+    // past an 8000 TPM limit on even a 2-page batch.
+    const needsImage = batch.forceImages || scannedSet.has(pageNum) || pagesWithEmbedded.has(pageNum);
+    if (needsImage && batch.pageImages[pageNum]) {
       content.push({ type: 'text', text: `--- Page ${pageNum} rendered image ---` });
-      content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${batch.pageImages[pageNum]}`, detail: 'high' } });
+      content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${batch.pageImages[pageNum]}`, detail: 'low' } });
     }
   }
 
-  const relevantEmbedded = batch.embeddedImages.filter(img => batch.pageNumbers.includes(img.page));
   for (const img of relevantEmbedded) {
     content.push({ type: 'text', text: `--- Embedded image #${img.index} (from page ${img.page}) ---` });
-    content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img.base64}`, detail: 'high' } });
+    content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img.base64}`, detail: 'low' } });
   }
 
   return content;

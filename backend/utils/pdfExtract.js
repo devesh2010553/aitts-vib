@@ -22,7 +22,13 @@ async function extractPdf(pdfBuffer) {
 
     const [textResult, screenshotResult, imageResult, tableResult] = await Promise.all([
       parser.getText().catch(() => ({ pages: [] })),
-      parser.getScreenshot({ scale: 1.6 }).catch(() => ({ pages: [] })),
+      // Lower scale than you might reach for by default on purpose — every
+      // pixel here becomes vision tokens once a page image is actually sent
+      // (see aiProvider.js's needsImage logic), and Groq's free tier has a
+      // real per-minute token ceiling. 1.0 is legible enough for OCR/layout
+      // while keeping token cost per image well bounded; raise it back up if
+      // you're on a paid tier and image quality is limiting extraction accuracy.
+      parser.getScreenshot({ scale: 1.0 }).catch(() => ({ pages: [] })),
       parser.getImage({ imageThreshold: 60 }).catch(() => ({ pages: [] })), // skip small decorative artifacts, not real diagrams
       parser.getTable().catch(() => ({ pages: [] })),
     ]);

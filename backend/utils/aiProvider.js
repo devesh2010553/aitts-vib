@@ -5,14 +5,21 @@
  * different provider could be swapped in later without touching the queue,
  * routes, or schema-mapping code.
  *
- * Uses Anthropic's Messages API directly via fetch (Node 20+ has native
- * fetch — matches this project's existing `engines.node >= 20.0.0`). The API
- * key is read from process.env.ANTHROPIC_API_KEY and never leaves the
- * server (never sent to or read by the frontend).
+ * Uses xAI's Grok API, which is OpenAI-compatible (chat completions with
+ * image_url content blocks) rather than Anthropic's Messages format. Called
+ * directly via fetch (Node 20+ has native fetch). The API key is read from
+ * process.env.XAI_API_KEY and never leaves the server (never sent to or
+ * read by the frontend).
+ *
+ * Note: xAI's API is billed per-token like any other provider (no free
+ * tier for API access — only their web Playground is free to try) — check
+ * console.x.ai for current pricing/model names before relying on a cost
+ * estimate, and confirm AI_IMPORT_MODEL below is still a valid vision model
+ * there, since model names change over time.
  */
 
-const MODEL = process.env.AI_IMPORT_MODEL || 'claude-sonnet-4-6';
-const API_URL = 'https://api.anthropic.com/v1/messages';
+const MODEL = process.env.AI_IMPORT_MODEL || 'grok-4-fast';
+const API_URL = 'https://api.x.ai/v1/chat/completions';
 
 const SYSTEM_PROMPT = `You are a document-reconstruction engine for a JEE/NEET-style test platform. You are given pages of an existing question paper (as images and/or extracted text) and must RECONSTRUCT it exactly as a structured question list — you are NOT writing new questions.
 
@@ -48,7 +55,10 @@ Respond with STRICT JSON ONLY (no markdown fences, no commentary) matching exact
 }
 If no answer key is present in the document, return "answerKey": [].`;
 
-function buildUserContent(batch, embeddedImageIndexById) {
+function buildUserContent(batch) {
+  // OpenAI-compatible content-block format: {type:'text',text} and
+  // {type:'image_url', image_url:{url:'data:image/png;base64,<data>'}} —
+  // different shape from Anthropic's {type:'image', source:{...}}.
   const content = [];
   content.push({ type: 'text', text: `Pages ${batch.pageNumbers.join(', ')} of a ${batch.pageCount}-page document. Reconstruct every question found on these pages, following the rules above.` });
 
@@ -57,14 +67,14 @@ function buildUserContent(batch, embeddedImageIndexById) {
     if (text) content.push({ type: 'text', text: `--- Page ${pageNum} extracted text ---\n${text}` });
     if (batch.pageImages[pageNum]) {
       content.push({ type: 'text', text: `--- Page ${pageNum} rendered image ---` });
-      content.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: batch.pageImages[pageNum] } });
+      content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${batch.pageImages[pageNum]}`, detail: 'high' } });
     }
   }
 
   const relevantEmbedded = batch.embeddedImages.filter(img => batch.pageNumbers.includes(img.page));
   for (const img of relevantEmbedded) {
     content.push({ type: 'text', text: `--- Embedded image #${img.index} (from page ${img.page}) ---` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: img.base64 } });
+    content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img.base64}`, detail: 'high' } });
   }
 
   return content;
@@ -78,21 +88,22 @@ function parseJsonResponse(text) {
 }
 
 async function callModel(content) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY is not set — configure it to enable AI PDF import.');
+  if (!process.env.XAI_API_KEY) {
+    throw new Error('XAI_API_KEY is not set — configure it to enable AI PDF import.');
   }
   const res = await fetch(API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
+      'Authorization': `Bearer ${process.env.XAI_API_KEY}`,
     },
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 8000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content }],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content },
+      ],
     }),
   });
   if (!res.ok) {
@@ -100,9 +111,9 @@ async function callModel(content) {
     throw new Error(`AI provider error ${res.status}: ${body.slice(0, 300)}`);
   }
   const data = await res.json();
-  const textBlock = (data.content || []).find(b => b.type === 'text');
-  if (!textBlock) throw new Error('AI provider returned no text content');
-  return parseJsonResponse(textBlock.text);
+  const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!text) throw new Error('AI provider returned no text content');
+  return parseJsonResponse(text);
 }
 
 /**

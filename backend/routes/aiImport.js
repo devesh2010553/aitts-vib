@@ -38,8 +38,8 @@ const upload = multer({
 router.post('/import-pdf', upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No PDF uploaded' });
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(503).json({ error: 'AI PDF import is not configured on this server (missing ANTHROPIC_API_KEY).' });
+    if (!process.env.XAI_API_KEY) {
+      return res.status(503).json({ error: 'AI PDF import is not configured on this server (missing XAI_API_KEY).' });
     }
 
     const hash = sha256(req.file.buffer);

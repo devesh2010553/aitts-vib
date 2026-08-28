@@ -2,10 +2,10 @@ const express     = require('express');
 const router      = express.Router();
 const multer      = require('multer');
 const mongoose    = require('mongoose');
-const Test        = require('../models/Test');
-const UserProfile = require('../models/UserProfile');
-const Result      = require('../models/Result');
-const AdImage     = require('../models/AdImage');
+const Test        = require('../dynamo/testModel');   // was: const Test = require('../models/Test');
+const User        = require('../dynamo/userModel');   // was: const UserProfile = require('../models/UserProfile');
+const Result      = require('../dynamo/resultModel'); // was: const Result = require('../models/Result');
+const AdImage     = require('../models/AdImage'); // stays on MongoDB — not part of this migration
 const admin       = require('../utils/firebaseAdmin');
 const { authenticateAdmin } = require('../middleware/auth');
 const { invalidate } = require('../utils/leaderboardCache');
@@ -13,15 +13,24 @@ const { invalidate } = require('../utils/leaderboardCache');
 // Stats — public, no auth needed (used on home page for counters)
 router.get('/stats', async (req, res) => {
   try {
+    // DynamoDB has no cheap countDocuments() equivalent — these are Scan+COUNT
+    // operations now (see count()/countSubmitted() in the dynamo models),
+    // which do cost a full table read server-side, unlike Mongo's index-backed
+    // count. Acceptable here: this is a low-frequency public informational
+    // endpoint, not one of the concurrent-load paths this migration targeted.
     const [totalTests, totalStudents, totalAttempts] = await Promise.all([
-      Test.countDocuments(), UserProfile.countDocuments(),
-      Result.countDocuments({ inProgress: false })
+      Test.count(), User.count(), Result.countSubmitted(),
     ]);
+    // Storage info now only reflects what's LEFT on MongoDB (chat, ad images,
+    // PDF imports, the leaderboard cache) — Test/UserProfile/Result no
+    // longer live there, so this number means something different than it
+    // used to. DynamoDB has its own separate storage view in the AWS console
+    // (Tables → [table] → Additional info) — not surfaced here.
     let storageInfo = null;
     try {
       const s = await mongoose.connection.db.stats();
       const used = Math.round(s.dataSize/1024/1024*10)/10;
-      storageInfo = { usedMB: used, totalMB: 512, usedPct: Math.round(used/512*100), freesMB: Math.round((512-used)*10)/10 };
+      storageInfo = { usedMB: used, totalMB: 512, usedPct: Math.round(used/512*100), freesMB: Math.round((512-used)*10)/10, note: 'MongoDB-side only (chat/ad-images/PDF-imports/cache) — Tests/Students/Results now live on DynamoDB' };
     } catch(e) {}
     let sheetStats = null;
     try { sheetStats = await require('../utils/sheets').getSheetStats(); } catch(e) {}
@@ -34,18 +43,18 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 *
 
 // Tests CRUD
 router.get('/tests', async (req, res) => {
-  try { res.json(await Test.find().sort({ createdAt: -1 }).lean()); }
+  try { res.json((await Test.scanAll()).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))); }
   catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/tests', async (req, res) => {
-  try { res.status(201).json({ message: 'Test created', test: await new Test(req.body).save() }); }
+  try { res.status(201).json({ message: 'Test created', test: await Test.create(req.body) }); }
   catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/tests/:id', async (req, res) => {
   try {
-    const test = await Test.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const test = await Test.update(req.params.id, req.body);
     if (!test) return res.status(404).json({ error: 'Not found' });
     res.json({ message: 'Updated', test });
   } catch(err) { res.status(500).json({ error: err.message }); }
@@ -53,70 +62,61 @@ router.put('/tests/:id', async (req, res) => {
 
 router.patch('/tests/:id/publish', async (req, res) => {
   try {
-    const test = await Test.findById(req.params.id);
+    const test = await Test.getById(req.params.id);
     if (!test) return res.status(404).json({ error: 'Not found' });
-    test.isPublished = !test.isPublished;
-    await test.save();
-    res.json({ isPublished: test.isPublished });
+    const next = test.isPublished !== 'true';
+    await Test.setPublished(req.params.id, next);
+    res.json({ isPublished: next });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 router.delete('/tests/:id', async (req, res) => {
   try {
-    await Promise.all([Test.findByIdAndDelete(req.params.id), Result.deleteMany({ testId: req.params.id })]);
+    await Promise.all([Test.deleteById(req.params.id), Result.deleteByTest(req.params.id)]);
     res.json({ message: 'Test and all results deleted' });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Bonus marks: whole-test (applies to every student who attempted it) ───
-// Stores the currently-applied amount on the Test doc and $inc's every
-// Result by the delta, so re-applying with a new value only shifts marks by
-// the difference (safe to call repeatedly / edit the value later).
+// Stores the currently-applied amount on the Test item and shifts every
+// Result's obtainedMarks by the delta, so re-applying with a new value only
+// shifts marks by the difference (safe to call repeatedly / edit later).
 router.post('/tests/:id/bonus', async (req, res) => {
   try {
     const bonusMarks = Number(req.body.bonusMarks);
     if (!Number.isFinite(bonusMarks)) return res.status(400).json({ error: 'bonusMarks must be a number' });
-    const test = await Test.findById(req.params.id);
+    const test = await Test.getById(req.params.id);
     if (!test) return res.status(404).json({ error: 'Test not found' });
     const delta = bonusMarks - (test.bonusMarks || 0);
-    if (delta !== 0) {
-      await Result.updateMany(
-        { testId: test._id, inProgress: false },
-        { $inc: { obtainedMarks: delta, testBonusApplied: delta } }
-      );
-    }
-    test.bonusMarks = bonusMarks;
-    await test.save();
-    invalidate({ testId: test._id }); // bonus changes affect that test's leaderboard immediately, not after TTL
+    if (delta !== 0) await Result.applyBonusToTest(req.params.id, delta);
+    await Test.setBonusMarks(req.params.id, bonusMarks);
+    invalidate({ testId: req.params.id }); // bonus changes affect that test's leaderboard immediately, not after TTL
     res.json({ message: 'Bonus marks applied to all students who took this test', bonusMarks });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // ── Bonus marks: single student on a single test ───────────────────────────
-router.post('/results/:id/bonus', async (req, res) => {
+// Result's key is composite (userId+testId) now, not a single Mongo _id —
+// this route takes both as path params (see the matching frontend change in
+// adminvibacdonlineaiits.html's applyStudentBonus()).
+router.post('/results/:userId/:testId/bonus', async (req, res) => {
   try {
     const bonusMarks = Number(req.body.bonusMarks);
     if (!Number.isFinite(bonusMarks)) return res.status(400).json({ error: 'bonusMarks must be a number' });
-    const result = await Result.findById(req.params.id);
-    if (!result) return res.status(404).json({ error: 'Result not found' });
-    const delta = bonusMarks - (result.bonusMarks || 0);
-    result.obtainedMarks += delta;
-    result.bonusMarks = bonusMarks;
-    await result.save();
-    invalidate({ testId: result.testId, batch: result.batch });
-    res.json({ message: 'Bonus marks applied to this student for this test', bonusMarks, obtainedMarks: result.obtainedMarks });
+    const updated = await Result.applyBonusToOne(req.params.userId, req.params.testId, bonusMarks);
+    if (!updated) return res.status(404).json({ error: 'Result not found' });
+    invalidate({ testId: req.params.testId, batch: updated.batch });
+    res.json({ message: 'Bonus marks applied to this student for this test', bonusMarks, obtainedMarks: updated.obtainedMarks });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 // Delete results for a test by batch
-// DELETE results from MongoDB + archive Sheet rows to AIITS_Archive
-// Frees both MongoDB space AND Sheet row limit. Data preserved in Archive sheet.
+// DELETE from DynamoDB + archive Sheet rows to AIITS_Archive
+// Frees DynamoDB storage AND Sheet row limit. Data preserved in Archive sheet.
 router.delete('/tests/:id/results-only', async (req, res) => {
   try {
     const testId = req.params.id;
     const batch  = req.query.batch || 'all';
-    const filter = { testId, inProgress: false };
-    if (batch && batch !== 'all') filter.batch = batch;
 
     // 1. Archive Sheet rows for this test → AIITS_Archive, then remove from main sheet
     let archived = 0;
@@ -128,29 +128,28 @@ router.delete('/tests/:id/results-only', async (req, res) => {
       console.error('[ADMIN] Sheet archive error (non-fatal):', e.message);
     }
 
-    // 2. Delete from MongoDB
-    const affected = await Result.find(filter).select('userId obtainedMarks').lean();
-    const userIds  = [...new Set(affected.map(r => String(r.userId)))];
-    const del      = await Result.deleteMany(filter);
+    // 2. Delete from DynamoDB, recalculate each affected student's stats
+    const affected = await Result.deleteByTest(testId, batch);
+    const userIds  = [...new Set(affected.map(r => r.userId))];
     invalidate({ testId, batch: batch !== 'all' ? batch : undefined });
     for (const uid of userIds) {
-      const rem = await Result.find({ userId: uid, inProgress: false });
-      await UserProfile.findByIdAndUpdate(uid, {
+      const rem = (await Result.queryByUser(uid)).filter(r => !r.inProgress);
+      await User.update(uid, {
         totalTests:   rem.length,
         totalMarks:   rem.reduce((s,r) => s+(r.obtainedMarks||0), 0),
-        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0
+        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0,
       });
     }
 
     res.json({
-      deleted: del.deletedCount,
+      deleted: affected.length,
       archived,
-      message: del.deletedCount + ' results removed from MongoDB. ' + archived + ' rows moved to Archive sheet.'
+      message: affected.length + ' results removed from DynamoDB. ' + archived + ' rows moved to Archive sheet.'
     });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET leaderboard from AIITS_Archive sheet (used after results cleared from MongoDB)
+// GET leaderboard from AIITS_Archive sheet (used after results cleared)
 router.get('/tests/:id/sheet-leaderboard', async (req, res) => {
   try {
     const batch = req.query.batch || 'all';
@@ -173,8 +172,6 @@ router.delete('/tests/:id/results', async (req, res) => {
   try {
     const testId = req.params.id;
     const batch  = req.query.batch || 'all';
-    const filter = { testId, inProgress: false };
-    if (batch && batch !== 'all') filter.batch = batch;
 
     // 1. Archive Sheet rows to AIITS_Archive AND remove from main sheet
     let archived = 0;
@@ -186,22 +183,22 @@ router.delete('/tests/:id/results', async (req, res) => {
       console.error('[ADMIN] Sheet archive error (non-fatal):', e.message);
     }
 
-    // 2. Delete from MongoDB
-    const affected = await Result.find(filter).select('userId obtainedMarks').lean();
-    const userIds  = [...new Set(affected.map(r => String(r.userId)))];
-    const del      = await Result.deleteMany(filter);
+    // 2. Delete from DynamoDB, recalculate each affected student's stats
+    const affected = await Result.deleteByTest(testId, batch);
+    const userIds  = [...new Set(affected.map(r => r.userId))];
     invalidate({ testId, batch: batch !== 'all' ? batch : undefined });
     for (const uid of userIds) {
-      const rem = await Result.find({ userId: uid, inProgress: false });
-      await UserProfile.findByIdAndUpdate(uid, {
+      const rem = (await Result.queryByUser(uid)).filter(r => !r.inProgress);
+      await User.update(uid, {
         totalTests:   rem.length,
         totalMarks:   rem.reduce((s,r) => s+(r.obtainedMarks||0), 0),
-        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0
+        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0,
       });
     }
-    await Test.findByIdAndUpdate(testId, { attemptCount: await Result.countDocuments({ testId, inProgress: false }) });
+    const remainingForTest = (await Result.queryByTest(testId)).filter(r => !r.inProgress).length;
+    await Test.setAttemptCount(testId, remainingForTest);
 
-    res.json({ deleted: del.deletedCount, archived, message: del.deletedCount + ' results deleted from MongoDB. ' + archived + ' rows archived to AIITS_Archive sheet.' });
+    res.json({ deleted: affected.length, archived, message: affected.length + ' results deleted from DynamoDB. ' + archived + ' rows archived to AIITS_Archive sheet.' });
   } catch(err) {
     console.error('[ADMIN] delete results:', err);
     res.status(500).json({ error: err.message });
@@ -210,10 +207,14 @@ router.delete('/tests/:id/results', async (req, res) => {
 
 router.get('/tests/:id/results', async (req, res) => {
   try {
-    res.json(await Result.find({ testId: req.params.id, inProgress: false })
-      .populate('userId','name phone coachingName batch')
-      .sort({ obtainedMarks: -1, timeTaken: 1 })
-      .lean());
+    // Was .populate('userId','name phone coachingName batch') — not needed:
+    // Result already stores userName/coachingName/batch directly on each
+    // item from submit time (denormalized), which is what the admin
+    // frontend actually reads (see adminvibacdonlineaiits.html's fallback
+    // chain, already handles a plain userId string with no populated object).
+    const results = (await Result.queryByTest(req.params.id)).filter(r => !r.inProgress);
+    results.sort((a,b) => b.obtainedMarks - a.obtainedMarks || a.timeTaken - b.timeTaken);
+    res.json(results);
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -221,10 +222,11 @@ router.get('/tests/:id/results', async (req, res) => {
 router.get('/students', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit)||2000;
-    const [students, total] = await Promise.all([
-      UserProfile.find().sort({ createdAt: -1 }).limit(limit).lean(),
-      UserProfile.countDocuments()
-    ]);
+    // DynamoDB Scan — no cheap "sort by createdAt across the whole table"
+    // without a dedicated GSI (not added; this is a low-traffic admin-only
+    // screen). Sorted client-side after fetching.
+    const { items, count } = await User.scanAll(limit);
+    const students = items.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
     // Fetch emails from Firebase in batch (up to 100 at a time)
     const studentsWithEmail = await Promise.all(students.map(async (s) => {
       try {
@@ -234,17 +236,18 @@ router.get('/students', async (req, res) => {
         return { ...s, email: '' };
       }
     }));
-    res.json({ students: studentsWithEmail, total });
+    res.json({ students: studentsWithEmail, total: count });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// Delete specific student
+// Delete specific student — :id here is the uid (same value as before,
+// since req.user._id/uid have always been the same string post-migration)
 router.delete('/students/:id', async (req, res) => {
   try {
-    const profile = await UserProfile.findById(req.params.id);
+    const profile = await User.getByUid(req.params.id);
     await Promise.all([
-      UserProfile.findByIdAndDelete(req.params.id),
-      Result.deleteMany({ userId: req.params.id }),
+      User.deleteByUid(req.params.id),
+      Result.deleteAllByUser(req.params.id),
       profile ? admin.auth().deleteUser(profile.uid).catch(() => {}) : Promise.resolve()
     ]);
     res.json({ message: 'Student and their results deleted' });
@@ -256,22 +259,22 @@ router.delete('/students/batch/:batch', async (req, res) => {
   try {
     const batch = req.params.batch;
     if (!['11','12','dropper'].includes(batch)) return res.status(400).json({ error: 'Invalid batch' });
-    const profiles = await UserProfile.find({ batch }).select('_id uid');
-    const userIds  = profiles.map(u => u._id);
+    // No batch-scoped GSI on Users (low-traffic admin action) — Scan+filter.
+    const { items } = await User.scanAll(5000);
+    const profiles = items.filter(u => u.batch === batch);
 
-    const [uDel, rDel] = await Promise.all([
-      UserProfile.deleteMany({ batch }),
-      Result.deleteMany({ userId: { $in: userIds } })
-    ]);
-
-    // Delete from Firebase (best-effort)
+    let deletedResults = 0;
+    for (const p of profiles) {
+      deletedResults += await Result.deleteAllByUser(p.uid);
+      await User.deleteByUid(p.uid);
+    }
     await Promise.all(profiles.map(p => admin.auth().deleteUser(p.uid).catch(() => {})));
 
-    res.json({ deletedStudents: uDel.deletedCount, deletedResults: rDel.deletedCount });
+    res.json({ deletedStudents: profiles.length, deletedResults });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
-// Ad Images
+// Ad Images — unchanged, still MongoDB
 router.get('/ad-images', async (req, res) => {
   try { res.json(await AdImage.find().sort({ createdAt: -1 })); }
   catch(err) { res.status(500).json({ error: err.message }); }

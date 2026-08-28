@@ -11,7 +11,6 @@
  * (spec #35) — nothing here ever runs inside a student request's call stack.
  */
 const PdfImportJob = require('../models/PdfImportJob');
-const Test = require('../models/Test');
 const { extractPdf } = require('./pdfExtract');
 const aiProvider = require('./aiProvider');
 const sharp = require('sharp');
@@ -196,7 +195,7 @@ async function processJob(jobId) {
 }
 
 /** Maps a job's reviewed questions into an actual draft Test document, using
- *  the EXACT existing Test schema (backend/models/Test.js) — spec #21, #47:
+ *  the EXACT existing Test schema (backend/dynamo/testModel.js) — spec #21, #47:
  *  no parallel schema, the result is a normal draft test from here on,
  *  editable/publishable via the existing admin test editor. */
 function mapJobQuestionsToTestQuestions(draftQuestions) {

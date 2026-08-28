@@ -10,7 +10,7 @@ const { Schema } = require('mongoose');
 // Test via the normal /api/admin/tests/:id route on the main connection).
 
 // Intermediate representation for one detected question — kept separate from
-// the actual Test/questionSchema (backend/models/Test.js) until the teacher
+// the actual Test/questionSchema (backend/dynamo/testModel.js) until the teacher
 // reviews it, because it needs fields (confidence, source page range, raw
 // asset refs) that have no business living in the real Test schema forever.
 const draftQuestionSchema = new Schema({
@@ -55,7 +55,7 @@ const pdfImportJobSchema = new Schema({
 
   questions: [draftQuestionSchema],
 
-  createdTestId: { type: Schema.Types.ObjectId, ref: 'Test', default: null }, // set once the draft Test is created — id only, no cross-connection populate performed on this field
+  createdTestId: { type: String, default: null }, // DynamoDB Test.testId string (e.g. "test_<uuid>") — was Schema.Types.ObjectId with a ref:'Test', which would have thrown a cast error against a non-ObjectId string the moment Test moved to DynamoDB
   createdBy:     { type: String, default: '' }, // admin identifier, informational only
 
 }, { timestamps: true });

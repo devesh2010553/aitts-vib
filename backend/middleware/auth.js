@@ -1,6 +1,6 @@
-const admin       = require('../utils/firebaseAdmin');
-const UserProfile = require('../models/UserProfile');
-const jwt         = require('jsonwebtoken');
+const admin  = require('../utils/firebaseAdmin');
+const User   = require('../dynamo/userModel'); // was: const UserProfile = require('../models/UserProfile');
+const jwt    = require('jsonwebtoken');
 
 exports.authenticateStudent = async (req, res, next) => {
   try {
@@ -13,11 +13,17 @@ exports.authenticateStudent = async (req, res, next) => {
 
     const decoded = await admin.auth().verifyIdToken(token);
 
-    const profile = await UserProfile.findOne({ uid: decoded.uid });
+    const profile = await User.getByUid(decoded.uid);
     if (!profile) return res.status(401).json({ error: 'Profile not found. Please register again.' });
 
     req.user = {
-      _id:              profile._id,
+      // _id kept as an alias for uid, same string value — every route that
+      // reads req.user._id (results.js, leaderboard.js, admin.js, etc.) was
+      // only ever using it as an opaque key to pass into a query, never for
+      // any Mongo-ObjectId-specific behavior, so nothing downstream needed
+      // to change when the underlying id type changed from ObjectId to a
+      // plain string.
+      _id:              decoded.uid,
       uid:              decoded.uid,
       name:             profile.name,
       email:            decoded.email,
@@ -25,7 +31,7 @@ exports.authenticateStudent = async (req, res, next) => {
       batch:            profile.batch,
       coachingName:     profile.coachingName,
       fatherName:       profile.fatherName,
-      fatherOccupation: profile.fatherOccupation,
+      fatherOccupation:  profile.fatherOccupation,
       whatsappNumber:   profile.whatsappNumber,
     };
     next();

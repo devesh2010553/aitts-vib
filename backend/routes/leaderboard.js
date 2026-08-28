@@ -9,31 +9,40 @@
  * 3. Normalised cross-batch GET /leaderboard/normalised
  *    Each student's score = percentage across all attempted tests
  *    Fair across batches since 80/80 = 100% = 85/100 = 85%
+ *
+ * DYNAMODB MIGRATION NOTE: every $group/$sum aggregation in this file used
+ * to run inside MongoDB (Result.aggregate(...)). DynamoDB has no aggregation
+ * pipeline, so each one below now does: fetch the relevant raw Result items
+ * via a GSI query (Result.queryByTest / Result.queryByBatch — see
+ * backend/dynamo/resultModel.js), group/sum/sort them in plain JS. The MATH
+ * itself — especially /class's per-student-own-batch-applicable-tests rule,
+ * fixed earlier in this project — is unchanged; only where it executes moved
+ * from the database engine to this file.
  */
 const express     = require('express');
 const router      = express.Router();
-const Result      = require('../models/Result');
-const Test        = require('../models/Test');
-const UserProfile = require('../models/UserProfile');
+const Result      = require('../dynamo/resultModel'); // was: const Result = require('../models/Result');
+const Test        = require('../dynamo/testModel');   // was: const Test = require('../models/Test');
 const { authenticateStudent } = require('../middleware/auth');
 const { getCached, safeBatch } = require('../utils/leaderboardCache');
+
+const ALL_BATCHES = ['11', '12', 'dropper'];
+async function allResultsAcrossBatches() {
+  const perBatch = await Promise.all(ALL_BATCHES.map(b => Result.queryByBatch(b)));
+  return perBatch.flat();
+}
 
 // ── 1. Per-test ranking ────────────────────────────────────────────────────
 router.get('/test/:testId', authenticateStudent, async (req, res) => {
   try {
     const batch = safeBatch(req.query.batch);
-    const filter = { testId: req.params.testId, inProgress: false };
-    if (batch) filter.batch = batch;
 
     // Only the shared rankings list is cacheable — myRank/myResult are
     // per-viewer and must stay live.
     const cacheKey = `test:${req.params.testId}:${batch}`;
     const sanitized = await getCached(cacheKey, 'per-test', { testId: req.params.testId, batch }, async () => {
-      const results = await Result.find(filter)
-        .sort({ obtainedMarks: -1, timeTaken: 1 })
-        .limit(500)
-        .select('userName userEmail coachingName obtainedMarks totalMarks timeTaken submittedAt batch userId')
-        .lean();
+      let results = (await Result.queryByTest(req.params.testId, batch ? { batch } : {})).filter(r => !r.inProgress);
+      results = results.sort((a, b) => b.obtainedMarks - a.obtainedMarks || a.timeTaken - b.timeTaken).slice(0, 500);
 
       const bMap = { '11': 'Class 11', '12': 'Class 12', dropper: 'Dropper' };
       return results.map((o, i) => {
@@ -46,16 +55,11 @@ router.get('/test/:testId', authenticateStudent, async (req, res) => {
     // My rank — always computed live (never cached), since it's per-viewer.
     let myRank = null, myResult = null;
     if (req.user) {
-      myResult = await Result.findOne({ userId: req.user._id, testId: req.params.testId, inProgress: false }).lean();
+      myResult = await Result.getByUserAndTest(req.user.uid, req.params.testId);
+      if (myResult && myResult.inProgress) myResult = null;
       if (myResult) {
-        const above = await Result.countDocuments({
-          ...filter,
-          $or: [
-            { obtainedMarks: { $gt: myResult.obtainedMarks } },
-            { obtainedMarks: myResult.obtainedMarks, timeTaken: { $lt: myResult.timeTaken } }
-          ]
-        });
-        myRank = above + 1;
+        const { overallRank, batchRank } = await Result.computeRanks(req.params.testId, myResult.batch, myResult.obtainedMarks, myResult.timeTaken);
+        myRank = batch ? batchRank : overallRank;
       }
     }
 
@@ -69,42 +73,25 @@ router.get('/overall', authenticateStudent, async (req, res) => {
     const batch = safeBatch(req.query.batch);
     const cacheKey = `overall:${batch}`;
     const payload = await getCached(cacheKey, 'overall', { batch }, async () => {
-      // Aggregate per student: sum obtained, sum total, sum time
-      const pipeline = [
-        { $match: { inProgress: false } },
-        { $group: {
-            _id: '$userId',
-            totalObtained: { $sum: '$obtainedMarks' },
-            totalPossible: { $sum: '$totalMarks'    },
-            totalTime:     { $sum: '$timeTaken'     },
-            testCount:     { $sum: 1                },
-            userName:      { $last: '$userName'     },
-            coachingName:  { $last: '$coachingName' },
-            batch:         { $last: '$batch'        },
-        }},
-        { $match: { testCount: { $gte: 1 } } },
-      ];
-      if (batch) pipeline.splice(1, 0, { $match: { batch } });
+      const raw = (batch ? await Result.queryByBatch(batch) : await allResultsAcrossBatches()).filter(r => !r.inProgress);
 
-      let rows = await Result.aggregate(pipeline);
+      const byUser = {};
+      for (const r of raw) {
+        if (!byUser[r.userId]) byUser[r.userId] = { userName:r.userName, coachingName:r.coachingName, batch:r.batch, totalObtained:0, totalPossible:0, totalTime:0, testCount:0 };
+        const g = byUser[r.userId];
+        g.totalObtained += r.obtainedMarks || 0; g.totalPossible += r.totalMarks || 0; g.totalTime += r.timeTaken || 0; g.testCount += 1;
+        g.userName = r.userName; g.coachingName = r.coachingName; g.batch = r.batch; // $last equivalent
+      }
 
-      // Calculate percentage and sort
-      rows = rows.map(r => ({
-        ...r,
-        percentage: r.totalPossible > 0 ? (r.totalObtained / r.totalPossible * 100) : 0,
-      })).sort((a, b) => b.percentage - a.percentage || a.totalTime - b.totalTime);
+      let rows = Object.values(byUser).filter(r => r.testCount >= 1);
+      rows = rows.map(r => ({ ...r, percentage: r.totalPossible > 0 ? (r.totalObtained / r.totalPossible * 100) : 0 }))
+        .sort((a, b) => b.percentage - a.percentage || a.totalTime - b.totalTime);
 
       const bMap = { '11': 'Class 11', '12': 'Class 12', dropper: 'Dropper' };
       return rows.map((r, i) => ({
-        rank:         i + 1,
-        name:         r.userName     || 'Unknown',
-        coachingName: r.coachingName || '--',
-        batch:        bMap[r.batch]  || r.batch || '--',
-        testCount:    r.testCount,
-        totalObtained:r.totalObtained,
-        totalPossible:r.totalPossible,
-        percentage:   r.percentage.toFixed(2),
-        totalTime:    r.totalTime,
+        rank: i + 1, name: r.userName || 'Unknown', coachingName: r.coachingName || '--', batch: bMap[r.batch] || r.batch || '--',
+        testCount: r.testCount, totalObtained: r.totalObtained, totalPossible: r.totalPossible,
+        percentage: r.percentage.toFixed(2), totalTime: r.totalTime,
       }));
     });
     res.json(payload);
@@ -142,7 +129,7 @@ router.get('/class', authenticateStudent, async (req, res) => {
     const cacheKey = `class:${batch || ''}`;
     const payload = await getCached(cacheKey, 'class-cumulative', { batch: batch || '' }, async () => {
       const BATCHES = ['11', '12', 'dropper'];
-      const allTests = await Test.find({ isPublished: true }).select('_id title totalMarks targetBatches createdAt').sort({ createdAt: 1 }).lean();
+      const allTests = await Test.listPublished(); // GSI query, not a scan — see backend/dynamo/testModel.js
 
       // Applicable-test set + total possible marks, PER BATCH — derived
       // dynamically from each test's own targetBatches, never hard-coded.
@@ -150,36 +137,28 @@ router.get('/class', authenticateStudent, async (req, res) => {
       for (const b of BATCHES) {
         const applicable = allTests.filter(t => !t.targetBatches || t.targetBatches.length === 0 || t.targetBatches.includes(b));
         byBatch[b] = {
-          testIdSet:     new Set(applicable.map(t => String(t._id))),
+          testIdSet:     new Set(applicable.map(t => t.testId)),
           totalPossible: applicable.reduce((s, t) => s + (t.totalMarks || 0), 0),
           totalTests:    applicable.length,
         };
       }
 
-      const resultMatch = { inProgress: false };
-      if (batch) {
-        resultMatch.batch = batch;
-        resultMatch.testId = { $in: allTests.filter(t => byBatch[batch].testIdSet.has(String(t._id))).map(t => t._id) };
-      } else {
-        resultMatch.batch = { $in: BATCHES };
-      }
+      const raw = (batch ? await Result.queryByBatch(batch) : await allResultsAcrossBatches()).filter(r => !r.inProgress);
 
       const bMap = { '11': 'Class 11', '12': 'Class 12', dropper: 'Dropper' };
-      const rawRows = await Result.aggregate([
-        { $match: resultMatch },
-        { $group: {
-            _id:          '$userId',
-            userName:     { $last: '$userName' },
-            coachingName: { $last: '$coachingName' },
-            batch:        { $last: '$batch' },
-            // Keep each attempted test's own contribution separate — the
-            // per-student applicable set is applied in JS below, using
-            // EACH ROW'S OWN batch, not the query's batch filter. This is
-            // what makes "All" mode correct: every student here still gets
-            // graded only against their own batch's applicable tests.
-            entries:      { $push: { testId: '$testId', obtainedMarks: '$obtainedMarks', timeTaken: '$timeTaken' } },
-        }},
-      ]);
+      const byUser = {};
+      for (const r of raw) {
+        if (!byUser[r.userId]) byUser[r.userId] = { userName:r.userName, coachingName:r.coachingName, batch:r.batch, entries:[] };
+        const g = byUser[r.userId];
+        g.userName = r.userName; g.coachingName = r.coachingName; g.batch = r.batch; // $last equivalent
+        // Keep each attempted test's own contribution separate — the
+        // per-student applicable set is applied below, using EACH ROW'S OWN
+        // batch, not the query's batch filter. This is what makes "All"
+        // mode correct: every student here still gets graded only against
+        // their own batch's applicable tests.
+        g.entries.push({ testId: r.testId, obtainedMarks: r.obtainedMarks, timeTaken: r.timeTaken });
+      }
+      const rawRows = Object.values(byUser);
 
       const sorted = rawRows
         .map(r => {
@@ -188,7 +167,7 @@ router.get('/class', authenticateStudent, async (req, res) => {
           // appearing in `entries` while still counting via scope.totalPossible
           // below. "Not applicable" is excluded here so it never contributes
           // to either the numerator or the denominator.
-          const validEntries = (r.entries || []).filter(e => scope.testIdSet.has(String(e.testId)));
+          const validEntries = (r.entries || []).filter(e => scope.testIdSet.has(e.testId));
           const totalObtained = validEntries.reduce((s, e) => s + (e.obtainedMarks || 0), 0);
           const totalTime     = validEntries.reduce((s, e) => s + (e.timeTaken || 0), 0);
           return {
@@ -219,13 +198,13 @@ router.get('/class', authenticateStudent, async (req, res) => {
       // (how many tests exist in the selected class filter, or across all
       // published tests for "All") — informational only. They are NEVER
       // used as a per-student denominator; each row carries its own above.
-      const dropdownTests = batch ? allTests.filter(t => byBatch[batch].testIdSet.has(String(t._id))) : allTests;
+      const dropdownTests = batch ? allTests.filter(t => byBatch[batch].testIdSet.has(t.testId)) : allTests;
       return {
         batch: batch || '',
         totalTests:    dropdownTests.length,
         totalPossible: dropdownTests.reduce((s, t) => s + (t.totalMarks || 0), 0),
         perStudentDenominator: true, // signals to the frontend that totalTests/totalPossible above are NOT the per-row denominator (see each row's own fields)
-        tests: dropdownTests.map(t => ({ _id: t._id, title: t.title })),
+        tests: dropdownTests.map(t => ({ _id: t.testId, title: t.title })),
         leaderboard: sorted,
       };
     });
@@ -238,23 +217,19 @@ router.get('/class', authenticateStudent, async (req, res) => {
 router.get('/normalised', authenticateStudent, async (req, res) => {
   try {
     const payload = await getCached('normalised', 'normalised', {}, async () => {
-      const rows = await Result.aggregate([
-        { $match: { inProgress: false } },
-        { $group: {
-            _id:          '$userId',
-            totalObtained:{ $sum: '$obtainedMarks' },
-            totalPossible:{ $sum: '$totalMarks'    },
-            totalTime:    { $sum: '$timeTaken'     },
-            testCount:    { $sum: 1                },
-            userName:     { $last: '$userName'     },
-            coachingName: { $last: '$coachingName' },
-            batch:        { $last: '$batch'        },
-        }},
-        { $match: { testCount: { $gte: 1 }, totalPossible: { $gt: 0 } } },
-      ]);
+      const raw = (await allResultsAcrossBatches()).filter(r => !r.inProgress);
+
+      const byUser = {};
+      for (const r of raw) {
+        if (!byUser[r.userId]) byUser[r.userId] = { userName:r.userName, coachingName:r.coachingName, batch:r.batch, totalObtained:0, totalPossible:0, totalTime:0, testCount:0 };
+        const g = byUser[r.userId];
+        g.totalObtained += r.obtainedMarks || 0; g.totalPossible += r.totalMarks || 0; g.totalTime += r.timeTaken || 0; g.testCount += 1;
+        g.userName = r.userName; g.coachingName = r.coachingName; g.batch = r.batch;
+      }
 
       const bMap = { '11': 'Class 11', '12': 'Class 12', dropper: 'Dropper' };
-      return rows
+      return Object.values(byUser)
+        .filter(r => r.testCount >= 1 && r.totalPossible > 0)
         .map(r => ({ ...r, percentage: r.totalObtained / r.totalPossible * 100 }))
         .sort((a, b) => b.percentage - a.percentage || a.totalTime - b.totalTime)
         .map((r, i) => ({
@@ -274,8 +249,8 @@ router.get('/normalised', authenticateStudent, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-
-// GET student's own archived results (after MongoDB cleared)
+// GET student's own archived results (after MongoDB cleared) — untouched,
+// this already read from Google Sheets, not Result directly.
 router.get('/archived/:userId', authenticateStudent, async (req, res) => {
   try {
     // Students can only read their own archive

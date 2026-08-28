@@ -678,7 +678,7 @@ function onBonusTestSelect(){
       if(!results.length){studentSel.innerHTML='<option value="">No attempts for this test yet</option>';return;}
       studentSel.innerHTML='<option value="">Select a student</option>'+results.map(function(r){
         var name=(r.userId&&r.userId.name)||r.userName||'Unknown';
-        return '<option value="'+r._id+'" data-bonus="'+(r.bonusMarks||0)+'">'+esc(name)+' — '+r.obtainedMarks+'/'+r.totalMarks+'</option>';
+        return '<option value="'+r.userId+'|'+r.testId+'" data-bonus="'+(r.bonusMarks||0)+'">'+esc(name)+' — '+r.obtainedMarks+'/'+r.totalMarks+'</option>';
       }).join('');
     }).catch(function(){studentSel.innerHTML='<option value="">Failed to load students</option>';});
   }
@@ -703,15 +703,16 @@ function applyTestBonus(){
 function applyStudentBonus(){
   var testSel=document.getElementById('bonus-test-sel');
   var studentSel=document.getElementById('bonus-student-sel');
-  var resultId=studentSel&&studentSel.value;
+  var resultKey=studentSel&&studentSel.value; // "userId|testId" — Result's key in DynamoDB is composite, not a single _id
   if(!testSel||!testSel.value){toast('Select a test first','error');return;}
-  if(!resultId){toast('Select a student first','error');return;}
+  if(!resultKey){toast('Select a student first','error');return;}
+  var parts=resultKey.split('|');
   var mInp=document.getElementById('bonus-student-marks');
   var marks=parseFloat(mInp&&mInp.value);
   if(isNaN(marks)){toast('Enter a bonus marks value','error');return;}
   var studentName=studentSel.options[studentSel.selectedIndex]&&studentSel.options[studentSel.selectedIndex].text||'';
   if(!confirm('Apply '+marks+' bonus marks to '+studentName+'?'))return;
-  api('/api/admin/results/'+resultId+'/bonus',{method:'POST',body:JSON.stringify({bonusMarks:marks})}).then(function(){
+  api('/api/admin/results/'+parts[0]+'/'+parts[1]+'/bonus',{method:'POST',body:JSON.stringify({bonusMarks:marks})}).then(function(){
     toast('Bonus marks applied to this student','success');
     onBonusTestSelect();
     if(mInp)mInp.value='';

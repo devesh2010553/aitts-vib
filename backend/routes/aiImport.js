@@ -12,7 +12,7 @@ const router  = express.Router();
 const multer  = require('multer');
 const crypto  = require('crypto');
 const PdfImportJob = require('../models/PdfImportJob');
-const Test = require('../models/Test');
+const Test = require('../dynamo/testModel'); // was: const Test = require('../models/Test') — Test now lives on DynamoDB, not MongoDB
 const { authenticateAdmin } = require('../middleware/auth');
 const { extractPdf, sha256 } = require('../utils/pdfExtract');
 const aiProvider = require('../utils/aiProvider');
@@ -173,7 +173,7 @@ router.post('/import/:jobId/create-draft', async (req, res) => {
     const meta = req.body || {}; // optional teacher-supplied metadata (spec #33) — title/subject/topic/duration/batches
     const questions = mapJobQuestionsToTestQuestions(job.questions);
 
-    const test = await new Test({
+    const test = await Test.create({
       title: meta.title || job.fileName || 'AI Imported Test',
       subject: meta.subject || 'General',
       topic: meta.topic || 'Imported',
@@ -182,11 +182,11 @@ router.post('/import/:jobId/create-draft', async (req, res) => {
       questions,
       isPublished: false, // spec #23, #48 — never auto-published
       targetBatches: Array.isArray(meta.targetBatches) ? meta.targetBatches : [],
-    }).save();
+    });
 
-    job.createdTestId = test._id;
+    job.createdTestId = test.testId;
     await job.save();
-    res.status(201).json({ testId: test._id, questionCount: test.questionCount });
+    res.status(201).json({ testId: test.testId, questionCount: test.questionCount });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

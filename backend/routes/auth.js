@@ -2,8 +2,8 @@ const express     = require('express');
 const router      = express.Router();
 const jwt         = require('jsonwebtoken');
 const admin       = require('../utils/firebaseAdmin');
-const UserProfile = require('../models/UserProfile');
-const Result      = require('../models/Result');
+const User        = require('../dynamo/userModel');   // was: const UserProfile = require('../models/UserProfile');
+const Result      = require('../dynamo/resultModel'); // was: const Result = require('../models/Result');
 const { authenticateStudent, authenticateAdmin } = require('../middleware/auth');
 
 function makeToken(payload) {
@@ -38,33 +38,32 @@ router.post('/register', async (req, res) => {
       return res.status(401).json({ error: 'Invalid Firebase token. Please try again.' });
     }
 
-    const phoneExists = await UserProfile.findOne({ phone });
+    const phoneExists = await User.getByPhone(phone);
     if (phoneExists) {
       await admin.auth().deleteUser(decoded.uid).catch(() => {});
       return res.status(400).json({ error: 'Phone number already registered' });
     }
 
-    const existing = await UserProfile.findOne({ uid: decoded.uid });
+    const existing = await User.getByUid(decoded.uid);
     if (existing) {
       return res.json({
         message: 'Account already exists',
-        user: { id: existing._id, name: existing.name, email: decoded.email, batch: existing.batch, coachingName: existing.coachingName },
+        user: { id: existing.uid, name: existing.name, email: decoded.email, batch: existing.batch, coachingName: existing.coachingName },
       });
     }
 
     await admin.auth().updateUser(decoded.uid, { displayName: name }).catch(() => {});
 
-    const profile = new UserProfile({ uid: decoded.uid, name, phone, coachingName, fatherName, fatherOccupation, whatsappNumber, batch });
-    await profile.save();
+    const profile = await User.create({ uid: decoded.uid, name, phone, coachingName, fatherName, fatherOccupation, whatsappNumber, batch });
 
     try {
       const { queueStudent } = require('../utils/sheetsQueue');
-      queueStudent({ userId: profile._id, name: profile.name, email: decoded.email, phone: profile.phone, batch: profile.batch, coachingName: profile.coachingName, fatherName: profile.fatherName, fatherOccupation: profile.fatherOccupation, whatsappNumber: profile.whatsappNumber, createdAt: profile.createdAt, totalTests: 0, totalMarks: 0, highestMarks: 0 });
+      queueStudent({ userId: profile.uid, name: profile.name, email: decoded.email, phone: profile.phone, batch: profile.batch, coachingName: profile.coachingName, fatherName: profile.fatherName, fatherOccupation: profile.fatherOccupation, whatsappNumber: profile.whatsappNumber, createdAt: profile.createdAt, totalTests: 0, totalMarks: 0, highestMarks: 0 });
     } catch (e) {}
 
     res.status(201).json({
       message: 'Account created',
-      user: { id: profile._id, name: profile.name, email: decoded.email, batch: profile.batch, coachingName: profile.coachingName },
+      user: { id: profile.uid, name: profile.name, email: decoded.email, batch: profile.batch, coachingName: profile.coachingName },
     });
   } catch (err) {
     console.error('[AUTH] register:', err);
@@ -78,7 +77,7 @@ router.post('/lookup-email', async (req, res) => {
   try {
     const phone = (req.body.phone || '').trim();
     if (!phone) return res.status(400).json({ error: 'Phone required' });
-    const profile = await UserProfile.findOne({ phone });
+    const profile = await User.getByPhone(phone);
     if (!profile) return res.status(404).json({ error: 'No account found with this phone number' });
     const fbUser = await admin.auth().getUser(profile.uid);
     res.json({ email: fbUser.email });
@@ -133,8 +132,8 @@ router.post('/logout', (req, res) => {
 router.delete('/account', authenticateStudent, async (req, res) => {
   try {
     await Promise.all([
-      UserProfile.findByIdAndDelete(req.user._id),
-      Result.deleteMany({ userId: req.user._id }),
+      User.deleteByUid(req.user.uid),
+      Result.deleteAllByUser(req.user.uid),
       admin.auth().deleteUser(req.user.uid).catch(() => {}),
     ]);
     res.clearCookie('studentToken', { sameSite: 'lax' });
@@ -191,8 +190,8 @@ router.put('/profile', authenticateStudent, async (req, res) => {
     allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f].trim(); });
 
     if (updates.phone) {
-      const existing = await UserProfile.findOne({ phone: updates.phone, _id: { $ne: req.user._id } });
-      if (existing) return res.status(400).json({ error: 'Phone number already used by another account' });
+      const existing = await User.getByPhone(updates.phone);
+      if (existing && existing.uid !== req.user.uid) return res.status(400).json({ error: 'Phone number already used by another account' });
     }
 
     // Update Firebase display name if name changed
@@ -200,7 +199,7 @@ router.put('/profile', authenticateStudent, async (req, res) => {
       await admin.auth().updateUser(req.user.uid, { displayName: updates.name }).catch(() => {});
     }
 
-    const profile = await UserProfile.findByIdAndUpdate(req.user._id, updates, { new: true });
+    await User.update(req.user.uid, updates);
     res.json({ message: 'Profile updated', user: { ...req.user, ...updates } });
   } catch (err) {
     res.status(500).json({ error: err.message });

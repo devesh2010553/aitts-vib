@@ -1,7 +1,11 @@
 require('dotenv').config();
-const REQUIRED = ['MONGODB_URI','ADMIN_EMAIL','ADMIN_PASSWORD'];
+// AWS_* required as of the DynamoDB migration — Test, UserProfile, and
+// Result all now live there (see backend/dynamo/*.js); MongoDB is still
+// required too, for everything that stayed there (chat, ad images, PDF
+// imports, the leaderboard cache, forgot-password attempts).
+const REQUIRED = ['MONGODB_URI','ADMIN_EMAIL','ADMIN_PASSWORD','AWS_REGION','AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY'];
 const missing  = REQUIRED.filter(k=>!process.env[k]);
-if (missing.length) { console.error('[STARTUP] Missing env vars:', missing.join(', ')); process.exit(1); }
+if (missing.length) { console.error('[STARTUP] Missing env vars:', missing.join(', '), '— see DYNAMODB_SETUP.md for the AWS_* ones'); process.exit(1); }
 if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON && !process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
   console.error('[STARTUP] Missing FIREBASE_SERVICE_ACCOUNT_JSON env var');
   process.exit(1);

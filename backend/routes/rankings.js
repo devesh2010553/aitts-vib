@@ -1,7 +1,7 @@
 const express     = require('express');
 const router      = express.Router();
-const Result      = require('../models/Result');
-const UserProfile = require('../models/UserProfile');
+const Result      = require('../dynamo/resultModel'); // was: const Result = require('../models/Result');
+const User        = require('../dynamo/userModel');   // was: const UserProfile = require('../models/UserProfile');
 const { authenticateStudent } = require('../middleware/auth');
 const { getCached, safeBatch } = require('../utils/leaderboardCache');
 
@@ -9,19 +9,14 @@ router.get('/test/:testId', authenticateStudent, async (req, res) => {
   try {
     const batch = safeBatch(req.query.batch);
     const limit = Math.min(parseInt(req.query.limit)||200, 500);
-    const filter = { testId:req.params.testId, inProgress:false };
-    if (batch) filter.batch = batch;
 
     // Shared rankings list is cacheable (same test+batch+limit → same list for
     // every viewer); myRank/myResult stay live below since they're per-viewer.
     const cacheKey = `rankings:${req.params.testId}:${batch}:${limit}`;
     const { sanitized, total } = await getCached(cacheKey, 'per-test', { testId:req.params.testId, batch }, async () => {
-      const [results, count] = await Promise.all([
-        Result.find(filter).sort({ obtainedMarks:-1, timeTaken:1 }).limit(limit)
-          .select('userName userEmail coachingName obtainedMarks totalMarks timeTaken submittedAt batch rank batchRank')
-          .lean(),
-        Result.countDocuments(filter)
-      ]);
+      let results = (await Result.queryByTest(req.params.testId, batch ? { batch } : {})).filter(r => !r.inProgress);
+      const count = results.length;
+      results = results.sort((a,b) => b.obtainedMarks - a.obtainedMarks || a.timeTaken - b.timeTaken).slice(0, limit);
       const sanitized = results.map((obj,i) => {
         const out = { ...obj };
         if (out.userEmail) {
@@ -35,10 +30,11 @@ router.get('/test/:testId', authenticateStudent, async (req, res) => {
 
     let myRank=null, myResult=null;
     if (req.user) {
-      myResult = await Result.findOne({ userId:req.user._id, testId:req.params.testId, inProgress:false }).lean();
+      myResult = await Result.getByUserAndTest(req.user.uid, req.params.testId);
+      if (myResult && myResult.inProgress) myResult = null;
       if (myResult) {
-        const above = await Result.countDocuments({ ...filter, $or:[{ obtainedMarks:{ $gt:myResult.obtainedMarks } },{ obtainedMarks:myResult.obtainedMarks, timeTaken:{ $lt:myResult.timeTaken } }] });
-        myRank = above+1;
+        const { overallRank, batchRank } = await Result.computeRanks(req.params.testId, myResult.batch, myResult.obtainedMarks, myResult.timeTaken);
+        myRank = batch ? batchRank : overallRank;
       }
     }
     res.json({ rankings:sanitized, total, myRank, myResult: myResult ? { obtainedMarks:myResult.obtainedMarks, totalMarks:myResult.totalMarks, rank:myResult.rank, batchRank:myResult.batchRank } : null });
@@ -48,16 +44,20 @@ router.get('/test/:testId', authenticateStudent, async (req, res) => {
 router.get('/leaderboard', authenticateStudent, async (req, res) => {
   try {
     const batch = safeBatch(req.query.batch);
-    const filter = { totalTests:{ $gt:0 } };
-    if (batch) filter.batch = batch;
-    const users = await UserProfile.find(filter).select('name coachingName batch totalTests totalMarks highestMarks').sort({ totalMarks:-1, highestMarks:-1 }).limit(200).lean();
+    // No dedicated batch-scoped GSI for this legacy route (dead in the
+    // current frontend UI per the earlier audit — kept working, not
+    // optimized further). Fetches via the RankIndex GSI (already sorted by
+    // totalMarks) and filters by batch client-side if requested.
+    let users = await User.listTopPerformers(500);
+    if (batch) users = users.filter(u => u.batch === batch);
+    users = users.slice(0, 200);
     res.json(users.map((u,i) => ({ ...u, rank:i+1 })));
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 
 router.get('/top-performers', async (req, res) => {
   try {
-    const top = await UserProfile.find({ totalTests:{ $gt:0 } }).select('name coachingName batch totalMarks').sort({ totalMarks:-1 }).limit(10).lean();
+    const top = await User.listTopPerformers(10);
     res.json(top.map((u,i) => ({ ...u, rank:i+1 })));
   } catch(err) { res.status(500).json({ error:err.message }); }
 });

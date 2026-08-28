@@ -51,7 +51,8 @@ async function queryByTest(testId, opts) {
     ScanIndexForward: false,
   };
   if (opts.batch) {
-    params.FilterExpression = 'batch = :b';
+    params.FilterExpression = '#batch = :b';
+    params.ExpressionAttributeNames = { '#batch': 'batch' };
     params.ExpressionAttributeValues[':b'] = opts.batch;
   }
   const r = await db.send(new QueryCommand(params));
@@ -61,7 +62,9 @@ async function queryByTest(testId, opts) {
 async function queryByBatch(batch) {
   const r = await db.send(new QueryCommand({
     TableName: TABLES.RESULTS, IndexName: 'BatchIndex',
-    KeyConditionExpression: 'batch = :b', ExpressionAttributeValues: { ':b': batch },
+    KeyConditionExpression: '#batch = :b',
+    ExpressionAttributeNames: { '#batch': 'batch' },
+    ExpressionAttributeValues: { ':b': batch },
   }));
   return r.Items || [];
 }

@@ -53,7 +53,13 @@ router.post('/submit', authenticateStudent, async (req, res) => {
         }
       }
     }
-    obtainedMarks = Math.max(0, obtainedMarks);
+    // Negative marking is allowed to carry through to the final score —
+    // previously clamped to a floor of 0 here, so a student who, say,
+    // scored +5 from correct answers and -6 from negative marking on wrong
+    // ones would show as 0/total instead of the true -1/total. Removed the
+    // clamp: obtainedMarks (and the percentage derived from it below) can
+    // now legitimately go negative, exactly matching what the admin
+    // configured per-question (+marks / -negativeMarks).
     const testBonus = test.bonusMarks || 0;
     obtainedMarks += testBonus;
     const tt = Math.max(0, timeTaken||0);

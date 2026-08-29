@@ -107,6 +107,9 @@ textarea{resize:vertical}
 .opt-row-top input[type=radio]{width:16px;height:16px;flex-shrink:0;margin-top:1px;accent-color:var(--gold);cursor:pointer}
 .opt-correct-lbl{font-size:11px;color:var(--text-muted);white-space:nowrap;cursor:pointer}
 .opt-img-preview{max-height:50px;border-radius:4px;border:1px solid var(--border);margin-left:24px;display:block;margin-top:4px}
+.opt-img-preview-wrap{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 8px;margin-left:24px;margin-top:4px}
+.opt-img-preview-wrap img{max-height:42px;border-radius:4px;display:block}
+.opt-img-preview-wrap button{background:var(--red);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .q-attach-bar{display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap}
 .attach-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;border:1.5px dashed var(--gold-border);background:var(--gold-pale);color:var(--gold);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);transition:var(--transition)}
 .attach-btn:hover{border-color:var(--gold);background:var(--gold-glow)}
@@ -454,7 +457,7 @@ textarea{resize:vertical}
         <div class="fc-title"><i class="fas fa-paper-plane"></i> Send Push Notification to All Students</div>
         <div class="fg"><label>Title *</label><input type="text" id="ann-title" placeholder="e.g. New test live now!"></div>
         <div class="fg mt-8"><label>Message *</label><textarea id="ann-body" rows="3" placeholder="Announcement text..."></textarea></div>
-        <div class="fg mt-8"><label>Link URL (optional)</label><input type="url" id="ann-url" placeholder="https://aiits.onrender.com" value="https://aiits.onrender.com"></div>
+        <div class="fg mt-8"><label>Link URL (optional)</label><input type="url" id="ann-url" placeholder="https://msc.aiits.workers.dev" value="https://msc.aiits.workers.dev"></div>
         <button class="btn btn-gold mt-12" onclick="sendAnnouncement()"><i class="fas fa-paper-plane"></i> Send Push to All</button>
       </div>
     </div>
@@ -898,7 +901,7 @@ function buildOpts(idx,existing,n,isMulti){
     html+='<label for="qr-'+idx+'-'+i+'" style="font-size:11px;color:#888;white-space:nowrap;cursor:pointer">Correct</label>';
     html+='<label class="attach-btn" style="padding:4px 8px;font-size:11px;flex-shrink:0" title="Attach image"><i class="fas fa-paperclip"></i><input type="file" accept="image/*" onchange="attachOptImg(this,'+idx+','+i+')" style="display:none"></label>';
     html+='</div>';
-    if(optImg)html+='<img class="opt-img-preview" id="oimg-preview-'+idx+'-'+i+'" src="'+optImg+'" alt="">';
+    if(optImg)html+='<div class="opt-img-preview-wrap" id="oimg-preview-'+idx+'-'+i+'"><img src="'+optImg+'" alt=""><button type="button" onclick="removeOptImg('+idx+','+i+')">x</button></div>';
     else html+='<div id="oimg-preview-'+idx+'-'+i+'"></div>';
     html+='</div>';
   }
@@ -922,10 +925,19 @@ function attachOptImg(input,qIdx,oIdx){
   r.onload=function(e){
     _oImages[qIdx+'-'+oIdx]=e.target.result;
     var p=document.getElementById('oimg-preview-'+qIdx+'-'+oIdx);
-    if(p){p.src=e.target.result;p.style.display='block';}
+    // Rebuilt as innerHTML (was: p.src=..., which assumed the placeholder
+    // was always already an <img> tag). That broke attaching a FIRST image
+    // to an option that had none yet — the placeholder there is an empty
+    // <div> (see buildOpts()), and a <div> has no visual .src, so the
+    // preview silently never appeared until the form was reloaded (the
+    // image data was still saved correctly either way, just invisible in
+    // the editor). Matches the same wrap+remove-button markup as the
+    // question-image preview now.
+    if(p)p.outerHTML='<div class="opt-img-preview-wrap" id="oimg-preview-'+qIdx+'-'+oIdx+'"><img src="'+e.target.result+'" alt=""><button type="button" onclick="removeOptImg('+qIdx+','+oIdx+')">x</button></div>';
   };
   r.readAsDataURL(file);
 }
+function removeOptImg(qIdx,oIdx){delete _oImages[qIdx+'-'+oIdx];var p=document.getElementById('oimg-preview-'+qIdx+'-'+oIdx);if(p)p.outerHTML='<div id="oimg-preview-'+qIdx+'-'+oIdx+'"></div>';}
 function updateQCount(){setEl('q-count',document.querySelectorAll('.q-item').length);}
 
 function collectTest(publish){

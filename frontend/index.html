@@ -1306,10 +1306,10 @@ function logViolation(details){
   setEl('cheat-count-msg',S.violations>=MAX?'Auto-submitting now!':'Warning '+S.violations+'/'+MAX+' -- '+left+' more = auto-submit');
   var cm=document.getElementById('cheat-modal');if(cm)cm.classList.remove('hidden');
   saveProgress();
-  api('/api/push/cheat-log',{method:'POST',body:JSON.stringify({testId:S.currentTest.testId,testTitle:S.currentTest.title,violations:S.violations,autoSubmitted:S.violations>=MAX,details:details})}).catch(function(){});
+  api('/api/push/cheat-log',{method:'POST',body:JSON.stringify({testId:S.currentTest._id,testTitle:S.currentTest.title,violations:S.violations,autoSubmitted:S.violations>=MAX,details:details})}).catch(function(){});
   if(S.violations>=MAX)setTimeout(function(){closeModal('cheat-modal');submitTest();},1800);
 }
-function saveProgress(){if(!S.currentTest)return;api('/api/tests/'+S.currentTest.testId+'/save-progress',{method:'POST',body:JSON.stringify({savedAnswers:S.answers,violations:S.violations})}).catch(function(){});}
+function saveProgress(){if(!S.currentTest)return;api('/api/tests/'+S.currentTest._id+'/save-progress',{method:'POST',body:JSON.stringify({savedAnswers:S.answers,violations:S.violations})}).catch(function(){});}
 
 function buildPalette(n){var g=document.getElementById('palette-grid');if(!g)return;var h='';for(var i=0;i<n;i++)h+='<button class="p-btn" id="pb-'+i+'" onclick="goToQ('+i+')">'+(i+1)+'</button>';g.innerHTML=h;}
 
@@ -1376,11 +1376,11 @@ function submitTest(){
   var timeTaken=Math.max(0,S.timerTotal-S.timerLeft);
   var answers=S.currentTest.questions.map(function(q,i){
     var ans=S.answers[i];
-    if(q.isMultiChoice)return{questionId:q.questionId,selectedOptions:Array.isArray(ans)?ans:[]};
-    return{questionId:q.questionId,selectedOption:(ans!==undefined&&ans!==null)?ans:-1};
+    if(q.isMultiChoice)return{questionId:q._id,selectedOptions:Array.isArray(ans)?ans:[]};
+    return{questionId:q._id,selectedOption:(ans!==undefined&&ans!==null)?ans:-1};
   });
-  api('/api/results/submit',{method:'POST',body:JSON.stringify({testId:S.currentTest.testId,answers:answers,startedAt:new Date(S.startTime).toISOString(),timeTaken:timeTaken})}).then(function(r){
-    if(socket){try{socket.emit('leave-test',S.currentTest.testId);}catch(e){}}
+  api('/api/results/submit',{method:'POST',body:JSON.stringify({testId:S.currentTest._id,answers:answers,startedAt:new Date(S.startTime).toISOString(),timeTaken:timeTaken})}).then(function(r){
+    if(socket){try{socket.emit('leave-test',S.currentTest._id);}catch(e){}}
     showResultPage(r.result);showPage('page-result');
   }).catch(function(err){toast(err.message,'error');});
 }
@@ -1401,12 +1401,12 @@ function showResultPage(r){
 function viewAnalysis(){
   var panel=document.getElementById('analysis-panel');if(!panel)return;
   if(!panel.classList.contains('hidden')){panel.classList.add('hidden');return;}
-  var testId=S.currentTest&&S.currentTest.testId;if(!testId)return;
+  var testId=S.currentTest&&S.currentTest._id;if(!testId)return;
   api('/api/results/my/'+testId).then(function(data){
     var result=data.result,test=data.test;
     var letters=['A','B','C','D','E','F'];
     document.getElementById('analysis-items').innerHTML=(test.questions||[]).map(function(q,i){
-      var ans=(result.answers||[]).find(function(a){return String(a.questionId)===String(q.questionId);});
+      var ans=(result.answers||[]).find(function(a){return String(a.questionId)===String(q._id);});
       var selSingle=ans?ans.selectedOption:-1;var selMulti=ans?ans.selectedOptions||[]:[]; 
       return '<div class="analysis-item"><div class="ai-q"><strong>Q'+(i+1)+'.</strong> '+(q.isMultiChoice?'<span class="q-mc-badge" style="display:inline">Multi</span> ':'')+esc(q.questionText||'')+'</div>'+
         '<div class="ai-opts">'+q.options.map(function(o,j){
@@ -1424,12 +1424,12 @@ function viewAnalysis(){
 function viewRanking(){
   var panel=document.getElementById('ranking-panel');if(!panel)return;
   if(!panel.classList.contains('hidden')){panel.classList.add('hidden');return;}
-  loadTestRankings(S.currentTest&&S.currentTest.testId,'');
+  loadTestRankings(S.currentTest&&S.currentTest._id,'');
   panel.classList.remove('hidden');panel.scrollIntoView({behavior:'smooth'});
 }
 
 function loadTestRankings(testId,batch){
-  testId=testId||(S.currentTest&&S.currentTest.testId);if(!testId)return;
+  testId=testId||(S.currentTest&&S.currentTest._id);if(!testId)return;
   var c=document.getElementById('ranking-table');if(!c)return;
   c.innerHTML='<p style="color:var(--text-muted);padding:12px">Loading...</p>';
   document.querySelectorAll('#ranking-batch-filter .bfbtn').forEach(function(b){b.classList.toggle('active',(b.getAttribute('onclick')||'').indexOf("'"+batch+"'")!==-1||(batch===''&&(b.getAttribute('onclick')||'').indexOf("''")!==-1));});
@@ -1547,7 +1547,7 @@ function showAnalysisModal(testId){
       '</div>'+
       '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Question-wise breakdown</div>';
     (test.questions||[]).forEach(function(q,i){
-      var a=ansByQ[q.questionId]||{};
+      var a=ansByQ[q._id]||{};
       var status=a.isCorrect?'Correct':((a.selectedOption===-1||!a.selectedOption&&!(a.selectedOptions&&a.selectedOptions.length))?'Skipped':'Wrong');
       var color=status==='Correct'?'var(--green)':status==='Wrong'?'var(--red)':'#888';
       var qText=q.questionText||('Question '+(i+1));

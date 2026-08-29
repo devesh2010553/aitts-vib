@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const { GetCommand, PutCommand, UpdateCommand, QueryCommand, ScanCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 const { db, TABLES } = require('../config/dynamoClient');
-const { uploadDataUri, isDataUri } = require('../utils/cloudinary');
 
 /**
  * Replaces backend/models/Test.js. Table: AIITS_Tests
@@ -17,37 +16,24 @@ const { uploadDataUri, isDataUri } = require('../utils/cloudinary');
  * replacing the _id Mongoose used to auto-assign to embedded subdocuments —
  * Result.answers[].questionId and grading logic reference these the same
  * way they referenced the old ObjectIds.
- *
- * Images: questionImage/option.imageData used to be embedded as base64 —
- * fine on Mongo's 16MB documents, but DynamoDB caps a single item at 400KB,
- * so any base64 image is uploaded to Cloudinary here and only the resulting
- * URL is stored on the item. This is the one place every write path (the
- * manual admin editor AND the AI PDF import's create-draft) funnels
- * through, so it's the only place this needs to happen.
  */
 
 function genId(prefix) { return `${prefix}_${crypto.randomUUID()}`; }
 
-async function normalizeQuestions(questions) {
-  return Promise.all((questions || []).map(async q => {
-    const questionImage = isDataUri(q.questionImage) ? await uploadDataUri(q.questionImage, 'aiits/questions') : (q.questionImage || '');
-    const options = await Promise.all((q.options || []).map(async o => ({
+function normalizeQuestions(questions) {
+  return (questions || []).map(q => ({
+    questionId: q.questionId || genId('q'),
+    questionText: q.questionText || '',
+    questionImage: q.questionImage || '',
+    options: (q.options || []).map(o => ({
       optionId: o.optionId || genId('o'),
-      text: o.text || '',
-      isCorrect: !!o.isCorrect,
-      imageData: isDataUri(o.imageData) ? await uploadDataUri(o.imageData, 'aiits/questions') : (o.imageData || ''),
-    })));
-    return {
-      questionId: q.questionId || genId('q'),
-      questionText: q.questionText || '',
-      questionImage,
-      options,
-      isMultiChoice: !!q.isMultiChoice,
-      correctOptions: q.correctOptions || [],
-      marks: typeof q.marks === 'number' ? q.marks : 4,
-      negativeMarks: typeof q.negativeMarks === 'number' ? q.negativeMarks : 1,
-      explanation: q.explanation || '',
-    };
+      text: o.text || '', isCorrect: !!o.isCorrect, imageData: o.imageData || '',
+    })),
+    isMultiChoice: !!q.isMultiChoice,
+    correctOptions: q.correctOptions || [],
+    marks: typeof q.marks === 'number' ? q.marks : 4,
+    negativeMarks: typeof q.negativeMarks === 'number' ? q.negativeMarks : 1,
+    explanation: q.explanation || '',
   }));
 }
 
@@ -58,7 +44,7 @@ async function getById(testId) {
 
 async function create(data) {
   const now = new Date().toISOString();
-  const questions = await normalizeQuestions(data.questions);
+  const questions = normalizeQuestions(data.questions);
   const item = {
     testId: genId('test'),
     title: data.title, subject: data.subject, topic: data.topic, description: data.description || '',
@@ -81,7 +67,7 @@ async function create(data) {
 async function update(testId, data) {
   const existing = await getById(testId);
   if (!existing) return null;
-  const questions = data.questions ? await normalizeQuestions(data.questions) : existing.questions;
+  const questions = data.questions ? normalizeQuestions(data.questions) : existing.questions;
   const item = {
     ...existing,
     title: data.title ?? existing.title, subject: data.subject ?? existing.subject,

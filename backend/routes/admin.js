@@ -9,7 +9,7 @@ const AdImage     = require('../models/AdImage'); // stays on MongoDB — not pa
 const admin       = require('../utils/firebaseAdmin');
 const { authenticateAdmin } = require('../middleware/auth');
 const { invalidate } = require('../utils/leaderboardCache');
-const { uploadBuffer, destroyByUrl } = require('../utils/cloudinary');
+const { uploadTestImages, uploadBuffer } = require('../utils/cloudinary');
 
 // Stats — public, no auth needed (used on home page for counters)
 router.get('/stats', async (req, res) => {
@@ -43,21 +43,37 @@ router.use(authenticateAdmin);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
 // Tests CRUD
+// _id: t.testId (and per-question _id: q.questionId) aliased in here — the
+// frontend (adminvibacdonlineaiits.html) still reads t._id/q._id everywhere,
+// a leftover from Mongo. Test/Question no longer HAVE an _id field at all
+// post-DynamoDB-migration, so without this alias every t._id/q._id read on
+// the admin side silently evaluates to undefined (this is exactly what was
+// causing "Test not found" on Edit, and the DynamoDB "key element does not
+// match schema" error on the student side once _id also went undefined into
+// a Put's key). Same alias convention already used in routes/tests.js's
+// dashboard list and routes/results.js's /my-results.
+function aliasTest(t) {
+  return { ...t, _id: t.testId, questions: (t.questions || []).map(q => ({ ...q, _id: q.questionId })) };
+}
+
 router.get('/tests', async (req, res) => {
-  try { res.json((await Test.scanAll()).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt))); }
+  try { res.json((await Test.scanAll()).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(aliasTest)); }
   catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 router.post('/tests', async (req, res) => {
-  try { res.status(201).json({ message: 'Test created', test: await Test.create(req.body) }); }
-  catch(err) { res.status(500).json({ error: err.message }); }
+  try {
+    const questions = await uploadTestImages(req.body.questions);
+    res.status(201).json({ message: 'Test created', test: aliasTest(await Test.create({ ...req.body, questions })) });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 router.put('/tests/:id', async (req, res) => {
   try {
-    const test = await Test.update(req.params.id, req.body);
+    const questions = await uploadTestImages(req.body.questions);
+    const test = await Test.update(req.params.id, { ...req.body, questions });
     if (!test) return res.status(404).json({ error: 'Not found' });
-    res.json({ message: 'Updated', test });
+    res.json({ message: 'Updated', test: aliasTest(test) });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -229,12 +245,14 @@ router.get('/students', async (req, res) => {
     const { items, count } = await User.scanAll(limit);
     const students = items.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
     // Fetch emails from Firebase in batch (up to 100 at a time)
+    // _id: s.uid aliased for the same reason as aliasTest() above — the
+    // admin frontend's student table still reads s._id (delete/mute buttons).
     const studentsWithEmail = await Promise.all(students.map(async (s) => {
       try {
         const fbUser = await admin.auth().getUser(s.uid);
-        return { ...s, email: fbUser.email };
+        return { ...s, _id: s.uid, email: fbUser.email };
       } catch {
-        return { ...s, email: '' };
+        return { ...s, _id: s.uid, email: '' };
       }
     }));
     res.json({ students: studentsWithEmail, total: count });
@@ -283,6 +301,13 @@ router.get('/ad-images', async (req, res) => {
 
 router.post('/ad-images', upload.single('image'), async (req, res) => {
   try {
+    // Uploaded to Cloudinary instead of stored inline as base64 — imageData
+    // now holds a Cloudinary secure_url string. AdImage.imageData is a plain
+    // String field either way, so no schema change was needed, only this
+    // write path. If Cloudinary isn't configured yet (see CLOUDINARY_SETUP.md)
+    // this throws, same as any other failed save — it does not silently fall
+    // back to base64 here, since ad images are exactly the "storage weight"
+    // Cloudinary was requested to take off Mongo.
     const imageData = req.file ? await uploadBuffer(req.file.buffer, 'aiits/ad-images') : '';
     const img = await AdImage.create({
       title: req.body.title||'', description: req.body.description||'',
@@ -306,11 +331,8 @@ router.put('/ad-images/:id', async (req, res) => {
 });
 
 router.delete('/ad-images/:id', async (req, res) => {
-  try {
-    const img = await AdImage.findByIdAndDelete(req.params.id);
-    if (img) destroyByUrl(img.imageData); // best-effort, never blocks the response
-    res.json({ message: 'Deleted' });
-  } catch(err) { res.status(500).json({ error: err.message }); }
+  try { await AdImage.findByIdAndDelete(req.params.id); res.json({ message: 'Deleted' }); }
+  catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

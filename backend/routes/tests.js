@@ -39,14 +39,24 @@ router.get('/:id', authenticateStudent, async (req, res) => {
     if (!test || test.isPublished !== 'true' || test.isActive === false) return res.status(404).json({ error:'Test not found' });
     const existing = await Result.getByUserAndTest(req.user.uid, req.params.id);
     if (existing && !existing.inProgress) return res.status(400).json({ error:'Already submitted', resultId: existing.testId });
+    // _id: q.questionId aliased per question, and _id: test.testId on the
+    // test itself — the student frontend (index.html) still reads
+    // S.currentTest._id and q._id everywhere (save-progress, submit,
+    // cheat-log, grading-answer matching). Without this, those all silently
+    // sent/compared against `undefined`: save-progress/submit/cheat-log hit
+    // DynamoDB with a missing key attribute ("provided key element does not
+    // match the schema"), and even once a testId got through, answers were
+    // built as {questionId: undefined, ...} and could never match a real
+    // question when grading in routes/results.js.
     const questions = test.questions.map(q => ({
       ...q,
+      _id: q.questionId,
       options: q.options.map(o => ({ optionId: o.optionId, text: o.text, imageData: o.imageData || '' })),
       isMultiChoice: q.isMultiChoice || false,
     }));
     let resumeData = null;
     if (existing && existing.inProgress) resumeData = { savedAnswers: existing.savedAnswers || {}, violations: existing.violations || 0 };
-    res.json({ ...test, questions, resumeData });
+    res.json({ ...test, _id: test.testId, questions, resumeData });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

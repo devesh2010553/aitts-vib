@@ -1,68 +1,75 @@
 const cloudinary = require('cloudinary').v2;
 
 /**
- * Central image-storage helper. Replaces the old pattern of embedding
- * `data:image/...;base64,...` directly in documents.
- *
- * Why this had to change: Test now lives on DynamoDB (see ../dynamo/testModel.js),
- * and DynamoDB hard-caps a single item at 400 KB. A base64-embedded
- * questionImage/option image alone is routinely 100-500KB+ as text, so any
- * test with even a couple of images would fail to save (or silently blow up
- * item size) the moment it moved off Mongo's 16MB-document world. Uploading
- * to Cloudinary and storing only the short secure_url string sidesteps that
- * entirely, and also drops AdImage's document weight on MongoDB.
- *
- * Configure via a single CLOUDINARY_URL env var (cloudinary://key:secret@cloud_name,
- * the format Cloudinary's dashboard gives you directly), or the three
- * separate CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET
- * vars — either works, the SDK reads CLOUDINARY_URL automatically and the
- * explicit .config() call below only fires if that's not set.
+ * Central Cloudinary config. Supports either:
+ *   CLOUDINARY_URL=cloudinary://<key>:<secret>@<cloud_name>   (Cloudinary's own format — the SDK reads this env var automatically)
+ * or the three separate vars:
+ *   CLOUDINARY_CLOUD_NAME / CLOUDINARY_API_KEY / CLOUDINARY_API_SECRET
+ * See CLOUDINARY_SETUP.md for exact steps.
  */
-if (!process.env.CLOUDINARY_URL && process.env.CLOUDINARY_CLOUD_NAME) {
+const configured = !!(
+  process.env.CLOUDINARY_URL ||
+  (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)
+);
+
+if (configured && !process.env.CLOUDINARY_URL) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
+    secure: true,
   });
 }
-
-function isConfigured() {
-  const c = cloudinary.config();
-  return !!(c.cloud_name && c.api_key && c.api_secret);
+if (!configured) {
+  console.warn('[CLOUDINARY] Not configured (CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET missing) — image uploads will stay as inline base64 until this is set. See CLOUDINARY_SETUP.md.');
 }
 
-/** Upload a Buffer (e.g. from multer memoryStorage) and return the secure_url. */
+/**
+ * Uploads a base64 data-URI ("data:image/png;base64,...") to Cloudinary and
+ * returns the resulting secure_url. Anything that is NOT a base64 data-URI
+ * (already a URL, empty string, undefined) is returned unchanged — this
+ * makes the function safe to call unconditionally on every image field,
+ * whether it's a brand-new upload from the admin UI or an already-migrated
+ * Cloudinary URL from a previous save.
+ */
+async function uploadIfBase64(value, folder) {
+  if (!value || typeof value !== 'string' || !value.startsWith('data:')) return value;
+  if (!configured) return value; // no credentials yet — leave as base64, don't crash the save
+  const r = await cloudinary.uploader.upload(value, {
+    folder: folder || 'aiits',
+    resource_type: 'image',
+    // Keeps payload/storage sane — question images don't need to be huge;
+    // this caps the longest edge without visibly degrading exam readability.
+    transformation: [{ width: 1600, height: 1600, crop: 'limit', quality: 'auto:good' }],
+  });
+  return r.secure_url;
+}
+
+/** Uploads a raw Buffer (e.g. from multer memoryStorage) — used for ad images. */
 function uploadBuffer(buffer, folder) {
-  if (!isConfigured()) return Promise.reject(new Error('Cloudinary is not configured on this server (missing CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET).'));
   return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream({ folder, resource_type: 'image' }, (err, result) => {
-      if (err) return reject(err);
-      resolve(result.secure_url);
-    });
+    if (!configured) return reject(new Error('Cloudinary is not configured — set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET (see CLOUDINARY_SETUP.md)'));
+    const stream = cloudinary.uploader.upload_stream(
+      { folder: folder || 'aiits', resource_type: 'image', transformation: [{ width: 1920, height: 1920, crop: 'limit', quality: 'auto:good' }] },
+      (err, result) => (err ? reject(err) : resolve(result.secure_url))
+    );
     stream.end(buffer);
   });
 }
 
-/** Upload a `data:image/...;base64,...` data URI and return the secure_url. */
-async function uploadDataUri(dataUri, folder) {
-  if (!isConfigured()) throw new Error('Cloudinary is not configured on this server (missing CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME/API_KEY/API_SECRET).');
-  const result = await cloudinary.uploader.upload(dataUri, { folder, resource_type: 'image' });
-  return result.secure_url;
+/** Recursively uploads every base64 questionImage/option.imageData in a test's
+ *  question list, mutating nothing — returns a NEW questions array. Call this
+ *  once, right before Test.create()/Test.update(), on req.body.questions. */
+async function uploadTestImages(questions) {
+  if (!Array.isArray(questions)) return questions;
+  return Promise.all(questions.map(async (q) => {
+    const questionImage = await uploadIfBase64(q.questionImage, 'aiits/questions');
+    const options = await Promise.all((q.options || []).map(async (o) => ({
+      ...o,
+      imageData: await uploadIfBase64(o.imageData, 'aiits/questions'),
+    })));
+    return { ...q, questionImage, options };
+  }));
 }
 
-/** True for a `data:image/...;base64,...` string — the marker that an image still needs uploading, vs. already being a Cloudinary (or other) URL. */
-function isDataUri(s) {
-  return typeof s === 'string' && s.startsWith('data:image/');
-}
-
-/** Best-effort delete by full Cloudinary URL — used when an admin replaces/removes an image, to avoid orphaning storage. Never throws; a failed cleanup shouldn't fail the request that triggered it. */
-async function destroyByUrl(url) {
-  try {
-    if (!isConfigured() || typeof url !== 'string') return;
-    const m = url.match(/\/upload\/(?:v\d+\/)?([^.]+)\.[a-zA-Z0-9]+$/);
-    if (!m) return;
-    await cloudinary.uploader.destroy(m[1], { resource_type: 'image' });
-  } catch (e) { /* best-effort, never block the caller */ }
-}
-
-module.exports = { cloudinary, isConfigured, uploadBuffer, uploadDataUri, isDataUri, destroyByUrl };
+module.exports = { configured, uploadIfBase64, uploadBuffer, uploadTestImages };

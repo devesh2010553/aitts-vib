@@ -89,7 +89,10 @@ router.get('/my/:testId', authenticateStudent, async (req, res) => {
     // support Mongo-style nested-field exclusion projections the way
     // .select('-questions.questionImage ...') did.
     const rawTest = await Test.getById(req.params.testId);
-    const test = rawTest ? { ...rawTest, questions: rawTest.questions.map(q => { const { questionImage, options, ...rest } = q; return { ...rest, options: options.map(o => { const { imageData, ...oRest } = o; return oRest; }) }; }) } : null;
+    // _id: q.questionId aliased for the same reason as tests.js's GET /:id —
+    // the analysis view (index.html) matches a saved answer to its question
+    // via q._id.
+    const test = rawTest ? { ...rawTest, _id: rawTest.testId, questions: rawTest.questions.map(q => { const { questionImage, options, ...rest } = q; return { ...rest, _id: q.questionId, options: options.map(o => { const { imageData, ...oRest } = o; return oRest; }) }; }) } : null;
     const { overallRank, batchRank } = await Result.computeRanks(req.params.testId, result.batch, result.obtainedMarks, result.timeTaken);
     const allForTest = (await Result.queryByTest(req.params.testId)).filter(r => !r.inProgress);
     const total = allForTest.length;

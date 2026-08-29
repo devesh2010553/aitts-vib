@@ -11,6 +11,34 @@ const { authenticateAdmin } = require('../middleware/auth');
 const { invalidate } = require('../utils/leaderboardCache');
 const { uploadTestImages, uploadBuffer } = require('../utils/cloudinary');
 
+// One-time repair: recompute totalTests/totalMarks/highestMarks on every
+// User from actual Results (the source of truth), instead of trusting
+// whatever cumulative counters currently sit on the User item. This exists
+// because the public "Top Performers" widget (GET /api/rankings/top-performers)
+// reads those counters directly rather than recomputing live — so if they
+// ever drifted from real Results (e.g. carried over from the old MongoDB
+// data during the DynamoDB migration, before Test/Result had any fresh data
+// under them), the widget would keep showing those stale numbers/names
+// indefinitely with no way to self-correct. Uses the exact same per-user
+// recompute already used after a per-test result deletion elsewhere in this
+// file — just run once, for everyone.
+router.post('/recompute-user-stats', authenticateAdmin, async (req, res) => {
+  try {
+    const { items } = await User.scanAll(5000);
+    let updated = 0;
+    for (const u of items) {
+      const rem = (await Result.queryByUser(u.uid)).filter(r => !r.inProgress);
+      await User.update(u.uid, {
+        totalTests:   rem.length,
+        totalMarks:   rem.reduce((s,r) => s+(r.obtainedMarks||0), 0),
+        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0,
+      });
+      updated++;
+    }
+    res.json({ message: 'Recomputed stats for ' + updated + ' students from their actual results.', updated });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
 // Stats — public, no auth needed (used on home page for counters)
 router.get('/stats', async (req, res) => {
   try {
@@ -264,11 +292,21 @@ router.get('/students', async (req, res) => {
 router.delete('/students/:id', async (req, res) => {
   try {
     const profile = await User.getByUid(req.params.id);
+    // Grab the email BEFORE deleting the Firebase Auth account (it's gone
+    // once deleteUser() runs) so it can be recorded as blocked below —
+    // without this, deleting a student would free their email up for a
+    // brand-new registration a moment later.
+    let email = null;
+    if (profile) { try { email = (await admin.auth().getUser(profile.uid)).email; } catch {} }
     await Promise.all([
       User.deleteByUid(req.params.id),
       Result.deleteAllByUser(req.params.id),
       profile ? admin.auth().deleteUser(profile.uid).catch(() => {}) : Promise.resolve()
     ]);
+    if (email) {
+      const DeletedAccount = require('../models/DeletedAccount');
+      await DeletedAccount.findByIdAndUpdate(email.toLowerCase(), { _id: email.toLowerCase(), deletedBy: 'admin' }, { upsert: true }).catch(() => {});
+    }
     res.json({ message: 'Student and their results deleted' });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
@@ -283,11 +321,17 @@ router.delete('/students/batch/:batch', async (req, res) => {
     const profiles = items.filter(u => u.batch === batch);
 
     let deletedResults = 0;
+    const emails = [];
     for (const p of profiles) {
+      try { const fbUser = await admin.auth().getUser(p.uid); if (fbUser.email) emails.push(fbUser.email.toLowerCase()); } catch {}
       deletedResults += await Result.deleteAllByUser(p.uid);
       await User.deleteByUid(p.uid);
     }
     await Promise.all(profiles.map(p => admin.auth().deleteUser(p.uid).catch(() => {})));
+    if (emails.length) {
+      const DeletedAccount = require('../models/DeletedAccount');
+      await Promise.all(emails.map(e => DeletedAccount.findByIdAndUpdate(e, { _id: e, deletedBy: 'admin' }, { upsert: true }).catch(() => {})));
+    }
 
     res.json({ deletedStudents: profiles.length, deletedResults });
   } catch(err) { res.status(500).json({ error: err.message }); }

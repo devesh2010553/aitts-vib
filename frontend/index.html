@@ -22,6 +22,13 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <style>
 :root{--gold:#b8860b;--gold-light:#d4a017;--gold-pale:#fdf6e3;--gold-border:rgba(184,134,11,0.25);--gold-glow:rgba(184,134,11,0.12);--bg:#fafaf8;--bg-card:#ffffff;--bg-elevated:#f0ebe0;--border:#e5dfd0;--text:#1a1a1a;--text-sec:#555550;--text-muted:#888880;--red:#c53030;--red-light:rgba(197,48,48,0.1);--green:#276749;--green-light:rgba(39,103,73,0.1);--blue:#2b6cb0;--radius:12px;--radius-sm:8px;--shadow:0 2px 16px rgba(0,0,0,0.08);--shadow-md:0 4px 24px rgba(0,0,0,0.12);--shadow-gold:0 0 20px rgba(184,134,11,0.15);--transition:0.2s cubic-bezier(0.4,0,0.2,1);--font:"DM Sans",sans-serif;--font-display:"Playfair Display",serif}
+/* Dark mode — same variable set, just repointed; every component already
+   reads colors through var(--...) so nothing else needs a dark-specific
+   rule. Default is normal/light (no [data-theme] attribute = :root above). */
+[data-theme="dark"]{--gold:#d4a017;--gold-light:#e8bc2e;--gold-pale:#2a2410;--gold-border:rgba(212,160,23,0.3);--gold-glow:rgba(212,160,23,0.18);--bg:#121210;--bg-card:#1c1c18;--bg-elevated:#242420;--border:#34342c;--text:#f2f0e6;--text-sec:#cbc8ba;--text-muted:#94917f;--red:#f28b82;--red-light:rgba(242,139,130,0.15);--green:#7fd99a;--green-light:rgba(127,217,154,0.15);--blue:#7fb2ec;--shadow:0 2px 16px rgba(0,0,0,0.45);--shadow-md:0 4px 24px rgba(0,0,0,0.55);--shadow-gold:0 0 20px rgba(212,160,23,0.2)}
+body{transition:background var(--transition),color var(--transition)}
+.theme-toggle{background:var(--bg-elevated);border:1.5px solid var(--border);color:var(--text);width:34px;height:34px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:var(--transition)}
+.theme-toggle:hover{border-color:var(--gold);color:var(--gold)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
@@ -324,6 +331,7 @@ textarea{resize:vertical}
 </style>
 </head>
 <body>
+<script>(function(){try{var t=localStorage.getItem('aiits-theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();</script>
 <script type="module">/* FIREBASE_CONFIG_PLACEHOLDER */</script>
 
 <!-- PWA install prompt — hidden by default; JS shows it only for a visitor
@@ -354,6 +362,7 @@ textarea{resize:vertical}
       <a class="nav-link" onclick="scrollToSection('gallery')">Gallery</a>
     </div>
     <div class="nav-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon" id="theme-icon-guest"></i></button>
       <button class="btn btn-outline btn-sm" onclick="showPage('page-login')"><i class="fas fa-sign-in-alt"></i> Login</button>
       <button class="btn btn-gold btn-sm" onclick="showPage('page-register')"><i class="fas fa-user-plus"></i> Register</button>
     </div>
@@ -500,8 +509,9 @@ textarea{resize:vertical}
         <div style="text-align:center;padding:28px 0 20px">
           <div style="font-size:52px;margin-bottom:14px">📧</div>
           <h3 style="font-weight:700;margin-bottom:8px;font-size:18px">Check your inbox!</h3>
-          <p class="auth-sub">A password reset link has been sent.<br>Click the link in the email to set a new password.<br><br><small style="opacity:0.7">Don't see it? Check your spam folder.</small></p>
+          <p class="auth-sub">A password reset link has been sent.<br>Click the link in the email to set a new password.<br><br><small style="opacity:0.7">Don't see it? Check your Spam/Junk folder — it's sent by Firebase (noreply@...firebaseapp.com) and providers sometimes flag it.</small></p>
         </div>
+        <button class="btn btn-outline btn-full" id="forgot-open-email-btn" style="display:none;margin-bottom:10px" onclick="openEmailInbox()"><i class="fas fa-envelope-open-text"></i> <span id="forgot-open-email-label">Open Email</span></button>
         <button class="btn btn-gold btn-full" onclick="showPage('page-login')"><i class="fas fa-sign-in-alt"></i> Back to Login</button>
         <p class="auth-switch" style="margin-top:12px">Didn't receive it? <a onclick="document.getElementById('forgot-step-success').classList.add('hidden');document.getElementById('forgot-step-1').classList.remove('hidden')">Try again</a></p>
       </div>
@@ -523,6 +533,7 @@ textarea{resize:vertical}
       <button class="nav-link" onclick="switchTab('settings')"><i class="fas fa-cog"></i> Account</button>
     </div>
     <div class="nav-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon" id="theme-icon-dash"></i></button>
       <div class="user-pill"><i class="fas fa-user-circle"></i> <span id="nav-user-name">Student</span><span id="nav-batch-pill" class="batch-pill"></span></div>
       <button class="btn btn-outline btn-sm" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
     </div>
@@ -823,6 +834,22 @@ textarea{resize:vertical}
 var S={user:null,currentTest:null,answers:{},qIdx:0,startTime:null,timerIv:null,timerTotal:0,timerLeft:0,violations:0,saveIv:null,currentTestId:null};
 var socket=null;
 
+// THEME (dark/normal — default normal, per-browser via localStorage)
+function applyThemeIcons(){
+  var dark=document.documentElement.getAttribute('data-theme')==='dark';
+  ['theme-icon-guest','theme-icon-dash'].forEach(function(id){
+    var el=document.getElementById(id);if(!el)return;
+    el.className=dark?'fas fa-sun':'fas fa-moon';
+  });
+}
+function toggleTheme(){
+  var dark=document.documentElement.getAttribute('data-theme')==='dark';
+  if(dark){document.documentElement.removeAttribute('data-theme');try{localStorage.setItem('aiits-theme','light');}catch(e){}}
+  else{document.documentElement.setAttribute('data-theme','dark');try{localStorage.setItem('aiits-theme','dark');}catch(e){}}
+  applyThemeIcons();
+}
+applyThemeIcons();
+
 function updateNotifButton(){
   var btn=document.getElementById('notif-btn');
   var status=document.getElementById('notif-status');
@@ -1072,6 +1099,46 @@ function handleLogin(){
   });
 }
 
+// Maps the email domain the user typed to that provider's webmail inbox URL,
+// so "Open Email" lands them directly in their inbox instead of a generic
+// mailto: (which just opens whatever desktop mail client is configured,
+// often nothing on a phone/browser-only setup). Falls back to hiding the
+// button entirely for domains we don't recognize rather than guessing wrong.
+var EMAIL_PROVIDER_INBOX={
+  'gmail.com':'https://mail.google.com/mail/u/0/#inbox',
+  'googlemail.com':'https://mail.google.com/mail/u/0/#inbox',
+  'outlook.com':'https://outlook.live.com/mail/0/inbox',
+  'hotmail.com':'https://outlook.live.com/mail/0/inbox',
+  'live.com':'https://outlook.live.com/mail/0/inbox',
+  'msn.com':'https://outlook.live.com/mail/0/inbox',
+  'yahoo.com':'https://mail.yahoo.com/',
+  'yahoo.co.in':'https://mail.yahoo.com/',
+  'icloud.com':'https://www.icloud.com/mail',
+  'me.com':'https://www.icloud.com/mail',
+  'rediffmail.com':'https://mail.rediff.com/',
+  'protonmail.com':'https://mail.proton.me/',
+  'proton.me':'https://mail.proton.me/',
+  'zoho.com':'https://mail.zoho.com/'
+};
+var _forgotEmailInboxUrl=null;
+function setupOpenEmailButton(email){
+  var domain=(email.split('@')[1]||'').toLowerCase();
+  var url=EMAIL_PROVIDER_INBOX[domain];
+  var btn=document.getElementById('forgot-open-email-btn');
+  var label=document.getElementById('forgot-open-email-label');
+  if(url){
+    _forgotEmailInboxUrl=url;
+    label.textContent='Open '+domain.split('.')[0].replace(/^\w/,function(c){return c.toUpperCase();})+' Inbox';
+    btn.style.display='block';
+  } else {
+    _forgotEmailInboxUrl=null;
+    btn.style.display='none';
+  }
+}
+function openEmailInbox(){
+  if(_forgotEmailInboxUrl)window.open(_forgotEmailInboxUrl,'_blank','noopener');
+}
+
 function sendForgotOtp(){
   var email=(gv('forgot-email')||'').trim().toLowerCase();
   if(!email){toast('Enter your email','error');return;}
@@ -1100,6 +1167,7 @@ function sendForgotOtp(){
       btn.disabled=false;btn.innerHTML='<i class="fas fa-paper-plane"></i> Send Reset Email';
       document.getElementById('forgot-step-1').classList.add('hidden');
       document.getElementById('forgot-step-success').classList.remove('hidden');
+      setupOpenEmailButton(email);
     }).catch(function(err){
       btn.disabled=false;btn.innerHTML='<i class="fas fa-paper-plane"></i> Send Reset Email';
       toast(err.message||'Failed to send reset email','error');

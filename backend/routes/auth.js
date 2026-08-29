@@ -38,6 +38,19 @@ router.post('/register', async (req, res) => {
       return res.status(401).json({ error: 'Invalid Firebase token. Please try again.' });
     }
 
+    // Block re-registration on an email an admin previously deleted. Firebase
+    // has already created the Auth account by this point (registration is
+    // Firebase-first, this route runs after) — so on a match, undo that
+    // Firebase account too, not just reject the DynamoDB profile write.
+    if (decoded.email) {
+      const DeletedAccount = require('../models/DeletedAccount');
+      const blocked = await DeletedAccount.findById(decoded.email.toLowerCase()).catch(() => null);
+      if (blocked) {
+        await admin.auth().deleteUser(decoded.uid).catch(() => {});
+        return res.status(403).json({ error: 'This email was previously removed by an admin and cannot be used to register again. Contact your coaching institute if you believe this is a mistake.' });
+      }
+    }
+
     const phoneExists = await User.getByPhone(phone);
     if (phoneExists) {
       await admin.auth().deleteUser(decoded.uid).catch(() => {});

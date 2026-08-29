@@ -19,6 +19,14 @@ router.post('/submit', authenticateStudent, async (req, res) => {
     // back OUT to the client — only the grading result does, same as before.
     const test = await Test.getById(testId);
     if (!test) return res.status(404).json({ error: 'Test not found' });
+    // Same batch enforcement as GET /:id in tests.js — belt-and-suspenders,
+    // since submit is the endpoint that actually records a graded result.
+    // Blocking it here means even a request built by hand (bypassing the
+    // dashboard and the test-open route) can't produce a scored attempt for
+    // a batch the test wasn't published to.
+    if (test.targetBatches && test.targetBatches.length && !test.targetBatches.includes(req.user.batch)) {
+      return res.status(403).json({ error: 'This test is not available for your class/batch' });
+    }
 
     let obtainedMarks=0, correctAnswers=0, wrongAnswers=0, notAttempted=0;
     const processedAnswers = [];

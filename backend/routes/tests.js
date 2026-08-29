@@ -12,10 +12,17 @@ const { authenticateStudent } = require('../middleware/auth');
 router.get('/', authenticateStudent, async (req, res) => {
   try {
     const tests = await Test.listPublished(); // uses PublishedIndex GSI — see backend/dynamo/testModel.js
+    // A test with no targetBatches set (empty array — old tests, or an admin
+    // who left it blank) is treated as visible to everyone, same as before
+    // this filter existed. Once targetBatches has entries, only students in
+    // one of those batches see it — this is the check that was missing
+    // entirely: every published test was showing (and, via GET /:id below,
+    // was openable and submittable) to every student regardless of batch.
+    const visible = tests.filter(t => !t.targetBatches || !t.targetBatches.length || t.targetBatches.includes(req.user.batch));
     const userResults = await Result.queryByUser(req.user.uid);
     const map = {};
     userResults.forEach(r => { map[r.testId] = r; });
-    res.json(tests.map(t => {
+    res.json(visible.map(t => {
       const r = map[t.testId];
       return {
         testId: t.testId, _id: t.testId, // _id kept as an alias — the frontend/other callers reference either name in a few spots
@@ -37,6 +44,16 @@ router.get('/:id', authenticateStudent, async (req, res) => {
   try {
     const test = await Test.getById(req.params.id);
     if (!test || test.isPublished !== 'true' || test.isActive === false) return res.status(404).json({ error:'Test not found' });
+    // Same batch check as the list route, enforced again here on purpose:
+    // this is the route that actually serves questions and lets a student
+    // start/submit a test, so it's the one that has to hold even if
+    // something bypasses the dashboard list (a stale tab, a direct API
+    // call, etc). Without this, a Class 11 student could open and submit a
+    // Class-12-only test directly by testId even though it never should
+    // have been reachable — matches what you saw.
+    if (test.targetBatches && test.targetBatches.length && !test.targetBatches.includes(req.user.batch)) {
+      return res.status(403).json({ error: 'This test is not available for your class/batch' });
+    }
     const existing = await Result.getByUserAndTest(req.user.uid, req.params.id);
     if (existing && !existing.inProgress) return res.status(400).json({ error:'Already submitted', resultId: existing.testId });
     // _id: q.questionId aliased per question, and _id: test.testId on the
@@ -75,6 +92,11 @@ router.get('/:id/ad', authenticateStudent, async (req, res) => {
 
 router.post('/:id/save-progress', authenticateStudent, async (req, res) => {
   try {
+    const test = await Test.getById(req.params.id);
+    if (!test) return res.status(404).json({ error:'Test not found' });
+    if (test.targetBatches && test.targetBatches.length && !test.targetBatches.includes(req.user.batch)) {
+      return res.status(403).json({ error: 'This test is not available for your class/batch' });
+    }
     const { savedAnswers, violations } = req.body;
     await Result.saveProgress(req.user.uid, req.params.id, {
       savedAnswers: savedAnswers || {}, violations: violations || 0, lastActiveAt: new Date().toISOString(),

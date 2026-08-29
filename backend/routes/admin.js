@@ -163,14 +163,20 @@ router.delete('/tests/:id/results-only', async (req, res) => {
     const testId = req.params.id;
     const batch  = req.query.batch || 'all';
 
-    // 1. Archive Sheet rows for this test → AIITS_Archive, then remove from main sheet
+    // 1. Archive Sheet rows for this test → AIITS_Archive, then remove from main sheet.
+    // Deliberately FAIL-CLOSED: if archiving throws, we stop here and do NOT
+    // touch DynamoDB. This used to be a non-fatal try/catch that logged the
+    // error and deleted from DynamoDB anyway — meaning a Sheets API hiccup
+    // (auth expiry, quota, network blip) would silently and permanently wipe
+    // real student results with zero backup and zero warning to the admin.
     let archived = 0;
     try {
       const { archiveTestResults } = require('../utils/sheets');
       const r = await archiveTestResults(testId, batch);
       archived = r.archived;
     } catch(e) {
-      console.error('[ADMIN] Sheet archive error (non-fatal):', e.message);
+      console.error('[ADMIN] Sheet archive error — aborting delete, nothing was removed:', e.message);
+      return res.status(502).json({ error: 'Could not archive to the Sheet, so nothing was deleted (this action never deletes without a successful archive first). Sheet error: ' + e.message });
     }
 
     // 2. Delete from DynamoDB, recalculate each affected student's stats
@@ -218,14 +224,15 @@ router.delete('/tests/:id/results', async (req, res) => {
     const testId = req.params.id;
     const batch  = req.query.batch || 'all';
 
-    // 1. Archive Sheet rows to AIITS_Archive AND remove from main sheet
+    // Same fail-closed reasoning as /results-only above.
     let archived = 0;
     try {
       const { archiveTestResults } = require('../utils/sheets');
       const r = await archiveTestResults(testId, batch);
       archived = r.archived;
     } catch(e) {
-      console.error('[ADMIN] Sheet archive error (non-fatal):', e.message);
+      console.error('[ADMIN] Sheet archive error — aborting delete, nothing was removed:', e.message);
+      return res.status(502).json({ error: 'Could not archive to the Sheet, so nothing was deleted (this action never deletes without a successful archive first). Sheet error: ' + e.message });
     }
 
     // 2. Delete from DynamoDB, recalculate each affected student's stats

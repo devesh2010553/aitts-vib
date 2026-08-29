@@ -561,7 +561,7 @@ window.addEventListener('load',function(){
   api('/api/auth/admin-me').then(function(r){
     if(r&&r.admin){showPage('page-admin');initAdmin();}
   }).catch(function(){});
-  setTimeout(function(){try{if(typeof io!=='undefined')socket=io({withCredentials:true});}catch(e){}},1000);
+  setTimeout(function(){try{if(typeof io!=='undefined')socket=io({withCredentials:true,transports:['polling']});}catch(e){}},1000);
 });
 
 // AUTH
@@ -618,16 +618,17 @@ function loadAdminTests(){
     var html='';
     tests.forEach(function(t){
       var tb=(t.targetBatches&&t.targetBatches.length)?t.targetBatches.join(', '):'All batches';
+      var pub=t.isPublished===true||t.isPublished==='true'; // DynamoDB stores this as the STRING 'true'/'false', never a boolean
       html+='<div class="admin-test-item">';
       html+='<div style="flex:1;min-width:0"><div class="ati-title">'+esc(t.title)+'</div>';
       html+='<div class="ati-meta"><span>'+esc(t.subject)+'</span><span>'+esc(t.topic)+'</span>';
       html+='<span>'+(t.questions?t.questions.length:0)+'Q</span><span>'+t.duration+'min</span>';
       html+='<span>'+(t.attemptCount||0)+' attempts</span><span>'+esc(tb)+'</span>';
-      html+='<span><span class="pub-dot '+(t.isPublished?'':'draft-dot')+'"></span>'+(t.isPublished?'Published':'Draft')+'</span></div></div>';
+      html+='<span><span class="pub-dot '+(pub?'':'draft-dot')+'"></span>'+(pub?'Published':'Draft')+'</span></div></div>';
       html+='<div class="ati-actions">';
-      html+='<button class="btn btn-outline btn-sm" onclick="editTest(\''+t._id+'\')"><i class="fas fa-edit"></i> Edit</button>';
-      html+='<button class="btn '+(t.isPublished?'btn-ghost':'btn-gold')+' btn-sm" onclick="togglePub(\''+t._id+'\')"><i class="fas fa-'+(t.isPublished?'eye-slash':'globe')+'"></i> '+(t.isPublished?'Unpublish':'Publish')+'</button>';
-      html+='<button class="btn btn-red btn-sm" onclick="deleteTest(\''+t._id+'\')"><i class="fas fa-trash"></i></button>';
+      html+='<button class="btn btn-outline btn-sm" onclick="editTest(\''+t.testId+'\')"><i class="fas fa-edit"></i> Edit</button>';
+      html+='<button class="btn '+(pub?'btn-ghost':'btn-gold')+' btn-sm" onclick="togglePub(\''+t.testId+'\')"><i class="fas fa-'+(pub?'eye-slash':'globe')+'"></i> '+(pub?'Unpublish':'Publish')+'</button>';
+      html+='<button class="btn btn-red btn-sm" onclick="deleteTest(\''+t.testId+'\')"><i class="fas fa-trash"></i></button>';
       html+='</div></div>';
     });
     c.innerHTML=html;
@@ -647,10 +648,10 @@ function deleteTest(id){
 function loadDelTestSelect(){
   api('/api/admin/tests').then(function(tests){
     var sel=document.getElementById('del-test-sel');if(!sel)return;
-    sel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t._id+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
+    sel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t.testId+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
     var bsel=document.getElementById('bonus-test-sel');
     if(bsel){
-      bsel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t._id+'" data-bonus="'+(t.bonusMarks||0)+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
+      bsel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t.testId+'" data-bonus="'+(t.bonusMarks||0)+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
     }
   }).catch(function(){});
 }
@@ -966,7 +967,7 @@ function saveTest(publish){
 }
 function editTest(id){
   api('/api/admin/tests').then(function(tests){
-    var t=null;for(var i=0;i<tests.length;i++){if(tests[i]._id===id){t=tests[i];break;}}
+    var t=null;for(var i=0;i<tests.length;i++){if(tests[i].testId===id){t=tests[i];break;}}
     if(!t){toast('Test not found','error');return;}
     adminTab('create-test');
     setTimeout(function(){
@@ -1103,8 +1104,8 @@ function renderStudents(list){
     html+='<td>'+esc(s.coachingName||'-')+'</td><td>'+(s.totalTests||0)+'</td><td style="font-family:monospace;color:#b8860b">'+(s.totalMarks||0)+'</td>';
     html+='<td style="font-size:11px">'+new Date(s.createdAt).toLocaleDateString('en-IN')+'</td>';
     html+='<td style="white-space:nowrap">';
-    html+='<button class="btn btn-red btn-sm" style="margin-right:4px" onclick="deleteStudent(\''+s._id+'\',\''+esc(s.name)+'\')" title="Delete"><i class="fas fa-trash"></i></button>';
-    html+='<button class="btn btn-outline btn-sm" onclick="toggleMuteStudent(\''+esc(s.name)+'\',\''+s._id+'\')" id="mute-btn-'+s._id+'" title="Mute in chat"><i class="fas fa-microphone-slash"></i></button>';
+    html+='<button class="btn btn-red btn-sm" style="margin-right:4px" onclick="deleteStudent(\''+s.uid+'\',\''+esc(s.name)+'\')" title="Delete"><i class="fas fa-trash"></i></button>';
+    html+='<button class="btn btn-outline btn-sm" onclick="toggleMuteStudent(\''+esc(s.name)+'\',\''+s.uid+'\')" id="mute-btn-'+s.uid+'" title="Mute in chat"><i class="fas fa-microphone-slash"></i></button>';
     html+='</td></tr>';
   });
   html+='</tbody></table></div>';

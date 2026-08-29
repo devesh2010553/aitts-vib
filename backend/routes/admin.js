@@ -9,6 +9,7 @@ const AdImage     = require('../models/AdImage'); // stays on MongoDB — not pa
 const admin       = require('../utils/firebaseAdmin');
 const { authenticateAdmin } = require('../middleware/auth');
 const { invalidate } = require('../utils/leaderboardCache');
+const { uploadBuffer, destroyByUrl } = require('../utils/cloudinary');
 
 // Stats — public, no auth needed (used on home page for counters)
 router.get('/stats', async (req, res) => {
@@ -282,7 +283,7 @@ router.get('/ad-images', async (req, res) => {
 
 router.post('/ad-images', upload.single('image'), async (req, res) => {
   try {
-    const imageData = req.file ? 'data:'+req.file.mimetype+';base64,'+req.file.buffer.toString('base64') : '';
+    const imageData = req.file ? await uploadBuffer(req.file.buffer, 'aiits/ad-images') : '';
     const img = await AdImage.create({
       title: req.body.title||'', description: req.body.description||'',
       imageData, redirectUrl: req.body.redirectUrl||'',
@@ -305,8 +306,11 @@ router.put('/ad-images/:id', async (req, res) => {
 });
 
 router.delete('/ad-images/:id', async (req, res) => {
-  try { await AdImage.findByIdAndDelete(req.params.id); res.json({ message: 'Deleted' }); }
-  catch(err) { res.status(500).json({ error: err.message }); }
+  try {
+    const img = await AdImage.findByIdAndDelete(req.params.id);
+    if (img) destroyByUrl(img.imageData); // best-effort, never blocks the response
+    res.json({ message: 'Deleted' });
+  } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
 module.exports = router;

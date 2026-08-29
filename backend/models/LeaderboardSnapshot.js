@@ -10,7 +10,7 @@ const mongoose = require('mongoose');
 const snapshotSchema = new mongoose.Schema({
   cacheKey:   { type: String, required: true, unique: true },
   scope:      { type: String, enum: ['class-cumulative', 'per-test', 'overall', 'normalised'], required: true },
-  testId:     { type: mongoose.Schema.Types.ObjectId, ref: 'Test' }, // set only for scope:'per-test'
+  testId:     { type: String }, // DynamoDB Test.testId string (e.g. "test_<uuid>") — was an ObjectId ref, which CastErrors against the new id format; getCached()/invalidate() swallow the error so this silently never cached/invalidated per-test entries
   batch:      { type: String, enum: ['11', '12', 'dropper', ''], default: '' }, // '' = all batches
   payload:    { type: mongoose.Schema.Types.Mixed, required: true },
   computedAt: { type: Date, default: Date.now }

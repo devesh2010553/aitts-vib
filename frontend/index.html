@@ -95,7 +95,7 @@ textarea{resize:vertical}
 .batch-pill{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:4px}
 .batch-11{background:#dbeafe;color:#1e40af}.batch-12{background:#dcfce7;color:#15803d}.batch-drop{background:#fef3c7;color:#92400e}
 /* HERO */
-.hero{padding:64px 32px;background:linear-gradient(160deg,var(--gold-pale) 0%,#fff 60%);border-bottom:1.5px solid var(--border)}
+.hero{padding:64px 32px;background:linear-gradient(160deg,var(--gold-pale) 0%,var(--bg) 60%);border-bottom:1.5px solid var(--border)}
 .hero-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:64px}
 .hero-left{flex:1;max-width:580px}
 .hero-badge{display:inline-flex;align-items:center;gap:8px;background:var(--gold-glow);border:1.5px solid var(--gold-border);padding:6px 14px;border-radius:999px;font-size:12px;font-weight:600;color:var(--gold);margin-bottom:24px}
@@ -146,7 +146,8 @@ textarea{resize:vertical}
 /* FOOTER */
 .footer{background:var(--text);color:#ccc;padding:36px 32px;text-align:center}
 .footer-inner{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:6px}
-.footer-copy{font-size:12px;color:#666;margin-top:4px}
+.footer-copy{font-size:12px;color:var(--text-muted);margin-top:4px}
+.footer-credit{font-size:11px;color:var(--text-muted);margin-top:6px;opacity:0.75}
 /* AUTH */
 .auth-layout{display:flex;min-height:100vh}
 .auth-panel-left{flex:0 0 340px;background:linear-gradient(160deg,var(--gold-pale),#fff);border-right:1.5px solid var(--gold-border);display:flex;align-items:center;justify-content:center;padding:40px}
@@ -433,6 +434,7 @@ textarea{resize:vertical}
       <div><strong style="color:var(--gold)">AITTS</strong> -- All India Topicwise Test Series</div>
       <div>by MS Chauhan, HOD - Vibrant Academy</div>
       <div class="footer-copy">2026 Vibrant Academy. All rights reserved.</div>
+      <div class="footer-credit">Made with ♥ by Devesh Sharma</div>
     </div>
   </footer>
 </div>
@@ -542,6 +544,7 @@ textarea{resize:vertical}
     <button class="mob-btn active" onclick="switchTab('tests')"><i class="fas fa-list-alt"></i><span>Tests</span></button>
     <button class="mob-btn" onclick="switchTab('my-results')"><i class="fas fa-chart-bar"></i><span>Results</span></button>
     <button class="mob-btn" onclick="switchTab('leaderboard')"><i class="fas fa-trophy"></i><span>Board</span></button>
+    <button class="mob-btn" onclick="switchTab('gallery')"><i class="fas fa-images"></i><span>Gallery</span></button>
     <button class="mob-btn" onclick="switchTab('chat')"><i class="fas fa-comments"></i><span>Chat</span><span class="chat-unread-dot" style="display:none"></span></button>
     <button class="mob-btn" onclick="switchTab('settings')"><i class="fas fa-cog"></i><span>Account</span></button>
   </div>

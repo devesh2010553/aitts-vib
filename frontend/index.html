@@ -734,7 +734,7 @@ textarea{resize:vertical}
     <div class="test-ftr">
       <button class="btn btn-outline" id="prev-btn" onclick="goQ(-1)"><i class="fas fa-chevron-left"></i> Prev</button>
       <button class="btn btn-ghost" onclick="clearAns()"><i class="fas fa-eraser"></i> Clear</button>
-      <button class="btn btn-gold" onclick="saveNext()">Save &amp; Next <i class="fas fa-chevron-right"></i></button>
+      <button class="btn btn-gold" id="save-next-btn" onclick="saveNext()">Save &amp; Next <i class="fas fa-chevron-right"></i></button>
     </div>
   </div>
 </div>
@@ -834,7 +834,7 @@ textarea{resize:vertical}
   </div>
 </div>
 <script>
-var S={user:null,currentTest:null,answers:{},qIdx:0,startTime:null,timerIv:null,timerTotal:0,timerLeft:0,violations:0,saveIv:null,currentTestId:null};
+var S={user:null,currentTest:null,answers:{},qIdx:0,startTime:null,timerIv:null,timerTotal:0,timerLeft:0,violations:0,saving:false,currentTestId:null};
 var socket=null;
 
 // THEME (dark/normal — default normal, per-browser via localStorage)
@@ -891,12 +891,12 @@ function api(url,opts){
   opts=opts||{};
   var firebaseUser=window._firebaseAuth&&window._firebaseAuth.currentUser;
   if(!firebaseUser){
-    return fetch(url,{credentials:'include',headers:Object.assign({'Content-Type':'application/json'},opts.headers||{}),method:opts.method||'GET',body:opts.body||undefined}).then(function(res){
+    return fetch(url,{credentials:'include',headers:Object.assign({'Content-Type':'application/json'},opts.headers||{}),method:opts.method||'GET',body:opts.body||undefined,signal:opts.signal}).then(function(res){
       return res.json().then(function(data){if(!res.ok)throw new Error(data.error||('HTTP '+res.status));return data;});
     });
   }
   return firebaseUser.getIdToken(false).then(function(idToken){
-    return fetch(url,{credentials:'include',headers:Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+idToken},opts.headers||{}),method:opts.method||'GET',body:opts.body||undefined});
+    return fetch(url,{credentials:'include',headers:Object.assign({'Content-Type':'application/json','Authorization':'Bearer '+idToken},opts.headers||{}),method:opts.method||'GET',body:opts.body||undefined,signal:opts.signal});
   }).then(function(res){
     return res.json().then(function(data){if(!res.ok)throw new Error(data.error||('HTTP '+res.status));return data;});
   });
@@ -1347,7 +1347,6 @@ function loadTestPage(test){
   setEl('test-subject-badge',test.subject);setEl('test-title-hdr',test.title);setEl('tot-q',test.questions.length);
   buildPalette(test.questions.length);
   if(S.timerIv)clearInterval(S.timerIv);S.timerIv=setInterval(tickTimer,1000);
-  if(S.saveIv)clearInterval(S.saveIv);S.saveIv=setInterval(saveProgress,10000);
   renderQ(0);
 }
 
@@ -1364,7 +1363,6 @@ function teardownAntiCheat(){
   document.removeEventListener('webkitfullscreenchange',handleFsChange);
   window.removeEventListener('blur',handleBlur);
   document.removeEventListener('contextmenu',blockCtx);
-  if(S.saveIv){clearInterval(S.saveIv);S.saveIv=null;}
   try{if(document.fullscreenElement)document.exitFullscreen();}catch(e){}
 }
 function blockCtx(e){var tp=document.getElementById('page-test');if(tp&&tp.classList.contains('active'))e.preventDefault();}
@@ -1422,7 +1420,44 @@ function selectOpt(i){
   renderQ(S.qIdx);
 }
 function clearAns(){delete S.answers[S.qIdx];renderQ(S.qIdx);}
-function saveNext(){var n=S.qIdx+1;if(n<S.currentTest.questions.length)renderQ(n);else toast('Last question -- ready to submit?','info');}
+function saveNext(){
+  if(!S.currentTest||S.saving)return;
+  var n=S.qIdx+1;
+  var atLast=n>=S.currentTest.questions.length;
+  persistProgress().then(function(ok){
+    if(!ok)return; // save failed -- stay on this question, in-memory answers are untouched, student can retry
+    if(!atLast)renderQ(n);else toast('Last question -- ready to submit?','info');
+  });
+}
+function persistProgress(){
+  if(!S.currentTest)return Promise.resolve(true);
+  S.saving=true;
+  var btn=document.getElementById('save-next-btn');
+  var origHtml=btn?btn.innerHTML:null;
+  if(btn){btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Saving...';}
+  function cleanup(){S.saving=false;if(btn){btn.disabled=false;btn.innerHTML=origHtml;}}
+  var controller=(typeof AbortController!=='undefined')?new AbortController():null;
+  var timedOut=false;
+  var timeoutId=controller?setTimeout(function(){timedOut=true;controller.abort();},10000):null;
+  return api('/api/tests/'+S.currentTest._id+'/save-progress',{
+    method:'POST',
+    body:JSON.stringify({savedAnswers:S.answers,violations:S.violations}),
+    signal:controller?controller.signal:undefined
+  }).then(function(data){
+    if(timeoutId)clearTimeout(timeoutId);
+    cleanup();
+    if(data&&data.alreadySubmitted){
+      toast('This test was already submitted.','info');
+      return false; // stop saveNext() from navigating -- nothing further to save
+    }
+    return true;
+  }).catch(function(err){
+    if(timeoutId)clearTimeout(timeoutId);
+    cleanup();
+    toast(timedOut?'Save timed out -- check your connection and try again.':'Could not save your answer -- try again.','error');
+    return false;
+  });
+}
 function goQ(d){var n=S.qIdx+d;if(n>=0&&n<S.currentTest.questions.length)renderQ(n);}
 function goToQ(i){renderQ(i);}
 
@@ -1442,7 +1477,7 @@ function confirmSubmit(){
 }
 function submitTest(){
   closeModal('confirm-modal');
-  if(S.timerIv)clearInterval(S.timerIv);if(S.saveIv)clearInterval(S.saveIv);
+  if(S.timerIv)clearInterval(S.timerIv);
   teardownAntiCheat();
   var timeTaken=Math.max(0,S.timerTotal-S.timerLeft);
   var answers=S.currentTest.questions.map(function(q,i){

@@ -111,18 +111,47 @@ async function listTopPerformers(limit = 10) {
  *  discussion on why Test/User/Result were the ones worth moving). Results
  *  come back in whatever order Scan returns them, not sorted; the frontend
  *  admin table will need to sort client-side if that matters. */
+/** Admin student list. `limit` is a soft budget for how many items to
+ *  return in total (default matches admin.js's own default) — internally
+ *  loops across DynamoDB's LastEvaluatedKey pages (a single Scan call can
+ *  return far fewer than `limit` items if it hits the 1MB-per-call
+ *  response cap first) so callers that pass a large limit (e.g.
+ *  recompute-user-stats's User.scanAll(5000), which needs literally every
+ *  user, not just one page of them) actually get up to that many items
+ *  instead of silently truncating at whatever the first page happened to
+ *  hold. Honest limitation unchanged from before: DynamoDB has no cheap
+ *  "sort by createdAt across the whole table" without a dedicated GSI we
+ *  didn't add — results come back in Scan order, sorted client-side by
+ *  the caller if needed. */
 async function scanAll(limit = 100) {
-  const r = await db.send(new ScanCommand({ TableName: TABLES.USERS, Limit: limit }));
-  return { items: r.Items || [], count: r.Count || 0 };
+  let items = [];
+  let count = 0;
+  let key;
+  do {
+    const r = await db.send(new ScanCommand({ TableName: TABLES.USERS, Limit: Math.max(1, limit - items.length), ExclusiveStartKey: key }));
+    if (r.Items) items = items.concat(r.Items);
+    if (typeof r.Count === 'number') count += r.Count;
+    key = r.LastEvaluatedKey;
+  } while (key && items.length < limit);
+  return { items, count };
 }
 
 async function deleteByUid(uid) {
   await db.send(new DeleteCommand({ TableName: TABLES.USERS, Key: { uid } }));
 }
 
+// True total count — Select:COUNT still only covers one ≤1MB page per
+// call, so this must follow LastEvaluatedKey too or a large table
+// silently reports a lower count than actually exists.
 async function count() {
-  const r = await db.send(new ScanCommand({ TableName: TABLES.USERS, Select: 'COUNT' }));
-  return r.Count || 0;
+  let total = 0;
+  let key;
+  do {
+    const r = await db.send(new ScanCommand({ TableName: TABLES.USERS, Select: 'COUNT', ExclusiveStartKey: key }));
+    total += r.Count || 0;
+    key = r.LastEvaluatedKey;
+  } while (key);
+  return total;
 }
 
 module.exports = { getByUid, getByPhone, create, update, applySubmitStats, listTopPerformers, scanAll, deleteByUid, count };

@@ -19,6 +19,36 @@ function safeBatch(raw) {
 // near-instant anyway.
 const TTL_MS = 30 * 1000;
 
+// Cache-invalidation race guard: a global generation counter, bumped by
+// every invalidate() call. Without this, a slow in-flight recompute that
+// started BEFORE a submission (or bonus-marks edit, or result deletion)
+// could finish and write its now-stale payload back into the cache AFTER
+// invalidate()'s deleteMany already ran for that exact change — silently
+// resurrecting stale data for a full TTL_MS instead of the change being
+// visible immediately. Each getCached() call snapshots the generation
+// before starting computeFn(); if the generation has moved by the time
+// computeFn() resolves, some invalidation happened somewhere while we were
+// computing, so this payload might not reflect it and is only returned to
+// whoever's waiting on it right now, not persisted as "the cache" for
+// later readers. Deliberately global rather than per-cacheKey: a global
+// counter can occasionally skip persisting a payload that was actually
+// unaffected by the invalidation that bumped it (e.g. an unrelated test's
+// leaderboard), but that only costs one extra recompute next request —
+// the same "worst case" this file already accepted for invalidate() races
+// before this fix — and it can never let a stale payload survive an
+// invalidation, which is the actual requirement.
+let globalGeneration = 0;
+
+// Cache-stampede guard: recomputes currently in flight, keyed by cacheKey.
+// Without this, a cache miss/expiry hit by many concurrent viewers at once
+// (e.g. a class opening the same test's leaderboard right after it ends,
+// exactly when the cache was just invalidated) would have every one of them
+// independently trigger the same expensive recompute. With it, only the
+// first caller for a given key actually runs computeFn; everyone else who
+// arrives while that's in flight awaits the same promise and gets the same
+// result once it resolves.
+const inFlight = new Map();
+
 /**
  * Cache-aside read: serve a cached payload if it's fresh enough, otherwise
  * recompute via computeFn, store it, and return it. Never cache anything
@@ -33,17 +63,35 @@ async function getCached(cacheKey, scope, meta, computeFn) {
     }
   } catch (e) { /* cache read failure should never break the request — fall through to compute */ }
 
-  const payload = await computeFn();
+  const existingInFlight = inFlight.get(cacheKey);
+  if (existingInFlight) return existingInFlight;
 
-  // Best-effort write — a failed cache write just means the next request
-  // recomputes too; it must never fail the response itself.
-  LeaderboardSnapshot.findOneAndUpdate(
-    { cacheKey },
-    { cacheKey, scope, ...meta, payload, computedAt: new Date() },
-    { upsert: true }
-  ).catch(() => {});
-
-  return payload;
+  const startGeneration = globalGeneration;
+  const promise = (async () => {
+    try {
+      const payload = await computeFn();
+      // Only persist if no invalidation happened anywhere while we were
+      // computing — otherwise this payload may not reflect whatever change
+      // triggered that invalidation, and writing it back would resurrect
+      // data invalidate() just tried to clear. Still returned to whoever's
+      // awaiting this exact promise right now — only the cache WRITE is
+      // skipped, not the response.
+      if (globalGeneration === startGeneration) {
+        // Best-effort write — a failed cache write just means the next
+        // request recomputes too; it must never fail the response itself.
+        LeaderboardSnapshot.findOneAndUpdate(
+          { cacheKey },
+          { cacheKey, scope, ...meta, payload, computedAt: new Date() },
+          { upsert: true }
+        ).catch(() => {});
+      }
+      return payload;
+    } finally {
+      inFlight.delete(cacheKey);
+    }
+  })();
+  inFlight.set(cacheKey, promise);
+  return promise;
 }
 
 /**
@@ -55,6 +103,7 @@ async function getCached(cacheKey, scope, meta, computeFn) {
  * correctness reason to block the response on it.
  */
 function invalidate({ testId, batch } = {}) {
+  globalGeneration++;
   const or = [];
   // Cumulative/overall/normalised views change for the test's batch AND for
   // "all batches" whenever any result in that batch changes.

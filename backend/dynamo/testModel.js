@@ -20,6 +20,36 @@ const { db, TABLES } = require('../config/dynamoClient');
 
 function genId(prefix) { return `${prefix}_${crypto.randomUUID()}`; }
 
+// DynamoDB Query/Scan only return up to 1MB per call — test items can be
+// large (embedded questions + base64 images), so a full-table listing can
+// span multiple pages even with a modest number of tests. Follow
+// LastEvaluatedKey until it's exhausted instead of silently truncating.
+async function queryAllPaged(params) {
+  let items = [];
+  let key;
+  do {
+    if (key) params.ExclusiveStartKey = key;
+    const r = await db.send(new QueryCommand(params));
+    if (r.Items) items = items.concat(r.Items);
+    key = r.LastEvaluatedKey;
+  } while (key);
+  return items;
+}
+
+async function scanAllPaged(params) {
+  let items = [];
+  let count = 0;
+  let key;
+  do {
+    if (key) params.ExclusiveStartKey = key;
+    const r = await db.send(new ScanCommand(params));
+    if (r.Items) items = items.concat(r.Items);
+    if (typeof r.Count === 'number') count += r.Count;
+    key = r.LastEvaluatedKey;
+  } while (key);
+  return { items: items, count: count };
+}
+
 function normalizeQuestions(questions) {
   return (questions || []).map(q => ({
     questionId: q.questionId || genId('q'),
@@ -40,6 +70,60 @@ function normalizeQuestions(questions) {
 async function getById(testId) {
   const r = await db.send(new GetCommand({ TableName: TABLES.TESTS, Key: { testId } }));
   return r.Item || null;
+}
+
+// Metadata-only read — no questions/options/images. For callers (e.g.
+// save-progress's batch-eligibility check) that only need a couple of
+// invariant fields and would otherwise pay to fetch+deserialize the whole
+// question bank (with embedded images) on every call.
+async function getMeta(testId) {
+  const r = await db.send(new GetCommand({
+    TableName: TABLES.TESTS, Key: { testId },
+    ProjectionExpression: 'testId, targetBatches, isActive, isPublished, adEnabled, adImages, adRedirectUrl, adHtml',
+  }));
+  return r.Item || null;
+}
+
+// In-process cache for the FULL test object (questions + images), used
+// ONLY by the grading path (routes/results.js /submit). A submission spike
+// (e.g. 500 students submitting the same test within a few seconds) would
+// otherwise issue that many near-simultaneous full GetItem calls for the
+// exact same, unchanging item against local DynamoDB — real, avoidable
+// CPU/disk load on the modest local hardware this app targets. Short TTL
+// as a safety net even if an invalidation call below is ever missed;
+// explicit invalidation on every content-changing write means the TTL
+// almost never actually has to be relied on in practice. NOT invalidated
+// by incrementAttemptCount/setAttemptCount — those only change a display
+// counter grading never reads, so invalidating on every single submission
+// (constantly, during exactly the spike this exists to absorb) would
+// defeat the purpose. Admin-facing reads never go through this — GET
+// /:id, the admin test list, etc. all still call getById() directly and
+// always see the true current state; only grading trades a few seconds of
+// staleness for not re-reading unchanging data hundreds of times over.
+const GRADING_CACHE_TTL_MS = 5000;
+const gradingCache = new Map();   // testId -> { test, expiresAt }
+const gradingInFlight = new Map(); // testId -> Promise, collapses a cold-start stampede into one GetItem
+
+function invalidateGradingCache(testId) {
+  gradingCache.delete(testId);
+}
+
+async function getForGrading(testId) {
+  const cached = gradingCache.get(testId);
+  if (cached && cached.expiresAt > Date.now()) return cached.test;
+  const existing = gradingInFlight.get(testId);
+  if (existing) return existing;
+  const p = (async () => {
+    try {
+      const test = await getById(testId);
+      if (test) gradingCache.set(testId, { test, expiresAt: Date.now() + GRADING_CACHE_TTL_MS });
+      return test;
+    } finally {
+      gradingInFlight.delete(testId);
+    }
+  })();
+  gradingInFlight.set(testId, p);
+  return p;
 }
 
 async function create(data) {
@@ -85,6 +169,7 @@ async function update(testId, data) {
     updatedAt: new Date().toISOString(),
   };
   await db.send(new PutCommand({ TableName: TABLES.TESTS, Item: item }));
+  invalidateGradingCache(testId);
   return item;
 }
 
@@ -95,6 +180,7 @@ async function setPublished(testId, isPublished) {
     ExpressionAttributeValues: { ':p': isPublished ? 'true' : 'false', ':now': new Date().toISOString() },
     ReturnValues: 'ALL_NEW',
   }));
+  invalidateGradingCache(testId);
   return r.Attributes;
 }
 
@@ -113,6 +199,7 @@ async function setBonusMarks(testId, bonusMarks) {
     ExpressionAttributeValues: { ':b': bonusMarks, ':now': new Date().toISOString() },
     ReturnValues: 'ALL_NEW',
   }));
+  invalidateGradingCache(testId);
   return r.Attributes;
 }
 
@@ -122,28 +209,29 @@ async function setBonusMarks(testId, bonusMarks) {
  *  (it's not part of the key — a small filter over an already-narrow result
  *  set from the GSI, not a full scan). */
 async function listPublished() {
-  const r = await db.send(new QueryCommand({
+  const items = await queryAllPaged({
     TableName: TABLES.TESTS, IndexName: 'PublishedIndex',
     KeyConditionExpression: 'isPublished = :p', ExpressionAttributeValues: { ':p': 'true' },
     ScanIndexForward: false,
-  }));
-  return (r.Items || []).filter(t => t.isActive !== false);
+  });
+  return items.filter(t => t.isActive !== false);
 }
 
 /** Admin's full test list — every test regardless of status. Scan is fine
  *  here (admin-only, low traffic, same reasoning as userModel.scanAll). */
 async function scanAll() {
-  const r = await db.send(new ScanCommand({ TableName: TABLES.TESTS }));
-  return r.Items || [];
+  const { items } = await scanAllPaged({ TableName: TABLES.TESTS });
+  return items;
 }
 
 async function deleteById(testId) {
   await db.send(new DeleteCommand({ TableName: TABLES.TESTS, Key: { testId } }));
+  invalidateGradingCache(testId);
 }
 
 async function count() {
-  const r = await db.send(new ScanCommand({ TableName: TABLES.TESTS, Select: 'COUNT' }));
-  return r.Count || 0;
+  const { count: c } = await scanAllPaged({ TableName: TABLES.TESTS, Select: 'COUNT' });
+  return c;
 }
 
 async function setAttemptCount(testId, count) {
@@ -154,4 +242,4 @@ async function setAttemptCount(testId, count) {
   }));
 }
 
-module.exports = { getById, create, update, setPublished, incrementAttemptCount, setAttemptCount, setBonusMarks, listPublished, scanAll, deleteById, genId, count };
+module.exports = { getById, getMeta, getForGrading, create, update, setPublished, incrementAttemptCount, setAttemptCount, setBonusMarks, listPublished, scanAll, deleteById, genId, count };

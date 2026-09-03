@@ -79,7 +79,7 @@ router.get('/:id', authenticateStudent, async (req, res) => {
 
 router.get('/:id/ad', authenticateStudent, async (req, res) => {
   try {
-    const test = await Test.getById(req.params.id);
+    const test = await Test.getMeta(req.params.id);
     if (!test || !test.adEnabled || !test.adImages || !test.adImages.length) return res.json({ adEnabled:false, images:[] });
     // AdImage lives on MongoDB (MONGODB_URI2, see models/AdImage.js) — a
     // different data store entirely now that Test is on DynamoDB, so this
@@ -92,17 +92,35 @@ router.get('/:id/ad', authenticateStudent, async (req, res) => {
 
 router.post('/:id/save-progress', authenticateStudent, async (req, res) => {
   try {
-    const test = await Test.getById(req.params.id);
+    // Was Test.getById() — fetched the ENTIRE test (every question + every
+    // base64 image) on every single save call just to read one field.
+    // getMeta() projects only the handful of fields this check needs, so a
+    // save that happens hundreds of times over an exam no longer pays to
+    // deserialize the full question bank each time.
+    const test = await Test.getMeta(req.params.id);
     if (!test) return res.status(404).json({ error:'Test not found' });
     if (test.targetBatches && test.targetBatches.length && !test.targetBatches.includes(req.user.batch)) {
       return res.status(403).json({ error: 'This test is not available for your class/batch' });
     }
     const { savedAnswers, violations } = req.body;
-    await Result.saveProgress(req.user.uid, req.params.id, {
-      savedAnswers: savedAnswers || {}, violations: violations || 0, lastActiveAt: new Date().toISOString(),
-      userName: req.user.name, userEmail: req.user.email, coachingName: req.user.coachingName, batch: req.user.batch,
-    });
-    res.json({ saved:true });
+    try {
+      await Result.saveProgress(req.user.uid, req.params.id, {
+        savedAnswers: savedAnswers || {}, violations: violations || 0, lastActiveAt: new Date().toISOString(),
+        userName: req.user.name, userEmail: req.user.email, coachingName: req.user.coachingName, batch: req.user.batch,
+      });
+      res.json({ saved:true });
+    } catch (err) {
+      if (err.alreadySubmitted) {
+        // A stale/delayed Save & Next arrived after this student already
+        // submitted (or the exam auto-submitted on timer expiry) — the
+        // write was correctly rejected (see resultModel.saveProgress) so
+        // the final submitted answers were never touched. This isn't a
+        // failure the student needs to retry; 200 + saved:false signals
+        // "nothing to do" distinctly from a real save error.
+        return res.json({ saved:false, alreadySubmitted:true });
+      }
+      throw err;
+    }
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
 

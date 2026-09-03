@@ -5,6 +5,7 @@ const Test    = require('../dynamo/testModel');   // was: const Test = require('
 const User    = require('../dynamo/userModel');   // was: const UserProfile = require('../models/UserProfile');
 const { queueResult } = require('../utils/sheetsQueue');
 const { invalidate } = require('../utils/leaderboardCache');
+const { scheduleBroadcast } = require('../utils/rankingBroadcast');
 const { authenticateStudent } = require('../middleware/auth');
 
 router.post('/submit', authenticateStudent, async (req, res) => {
@@ -13,11 +14,14 @@ router.post('/submit', authenticateStudent, async (req, res) => {
     const existing = await Result.getByUserAndTest(req.user.uid, testId);
     if (existing && !existing.inProgress) return res.status(400).json({ error: 'Already submitted' });
 
-    // Grading only needs marks/correctness data — the DynamoDB Test item is
-    // fetched whole (no server-side field projection like Mongo's .select()
-    // for a single GetItem), but nothing here transmits the images/text
-    // back OUT to the client — only the grading result does, same as before.
-    const test = await Test.getById(testId);
+    // Grading only needs marks/correctness data — getForGrading() is a
+    // short-TTL, explicitly-invalidated in-process cache over the full
+    // test item (see backend/dynamo/testModel.js) so a burst of
+    // simultaneous submissions for the same test doesn't each pay for a
+    // separate full GetItem read of identical, unchanging data. Nothing
+    // here transmits the images/text back OUT to the client — only the
+    // grading result does, same as before.
+    const test = await Test.getForGrading(testId);
     if (!test) return res.status(404).json({ error: 'Test not found' });
     // Same batch enforcement as GET /:id in tests.js — belt-and-suspenders,
     // since submit is the endpoint that actually records a graded result.
@@ -63,6 +67,9 @@ router.post('/submit', authenticateStudent, async (req, res) => {
     const testBonus = test.bonusMarks || 0;
     obtainedMarks += testBonus;
     const tt = Math.max(0, timeTaken||0);
+    // computeRanks now runs targeted Select:COUNT queries against the
+    // TestIndex GSI (see resultModel.js) instead of fetching every result
+    // for the test — same exact rank rule, far cheaper per submission.
     const { overallRank, batchRank } = await Result.computeRanks(testId, req.user.batch, obtainedMarks, tt);
     const pct = test.totalMarks>0 ? Math.round(obtainedMarks/test.totalMarks*1000)/10 : 0;
     const rd = {
@@ -73,24 +80,87 @@ router.post('/submit', authenticateStudent, async (req, res) => {
       submittedAt: new Date().toISOString(),
       violations: (existing && existing.violations) || 0, bonusMarks: 0, testBonusApplied:testBonus,
     };
-    const result = await Result.submit(req.user.uid, testId, rd);
 
-    await Promise.all([
-      Test.incrementAttemptCount(testId),
-      User.applySubmitStats(req.user.uid, { marksGained: obtainedMarks }),
-    ]);
-    queueResult({ submittedAt:new Date(), userName:req.user.name, userEmail:req.user.email, userPhone:req.user.phone||'', batch:req.user.batch, coachingName:req.user.coachingName, testTitle:test.title, subject:test.subject, topic:test.topic, obtainedMarks, totalMarks:test.totalMarks, percentage:pct, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:overallRank, batchRank, testId, userId:req.user.uid });
-    invalidate({ testId, batch: req.user.batch }); // fire-and-forget — see leaderboardCache.js
-    const io = req.app.get('io');
-    if (io) {
-      const top = (await Result.queryByTest(testId))
-        .filter(r => !r.inProgress)
-        .sort((a,b) => b.obtainedMarks - a.obtainedMarks || a.timeTaken - b.timeTaken)
-        .slice(0, 10)
-        .map(r => ({ userName:r.userName, coachingName:r.coachingName, obtainedMarks:r.obtainedMarks, totalMarks:r.totalMarks, timeTaken:r.timeTaken, rank:r.rank, batch:r.batch }));
-      io.to('test-'+testId).emit('ranking-update', { testId, rankings:top });
+    // Result.submit() is now atomic + idempotent: the write itself is
+    // conditioned on "no final result exists yet for this user+test", so a
+    // double-click, a client retry after a dropped response, or two
+    // near-simultaneous submit requests can never create two final results,
+    // double-count the attempt, or produce a duplicate Sheets export row.
+    // If this IS a genuine duplicate, treat it as a safe idempotent
+    // response — return the result that was already recorded — instead of
+    // an error, and skip every side effect below since they already ran
+    // once for the original submission.
+    let result, isDuplicate = false;
+    try {
+      result = await Result.submit(req.user.uid, testId, rd);
+    } catch (err) {
+      if (err.alreadySubmitted && err.existing) {
+        result = err.existing;
+        isDuplicate = true;
+      } else {
+        throw err;
+      }
     }
-    res.json({ message:'Submitted', result:{ id: result.testId, obtainedMarks, totalMarks:test.totalMarks, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:overallRank, batchRank, batch:req.user.batch, percentage:pct } });
+
+    // CONCURRENT-SUBMISSION RANK RECONCILIATION
+    // overallRank/batchRank above were computed from a read taken BEFORE
+    // this write landed. Under real concurrency that read can miss:
+    //   (a) this exact submission's own row (it didn't exist yet at read
+    //       time — every submission necessarily undercounts itself), and
+    //   (b) any other student's submission that finished writing in the
+    //       (typically tiny, but non-zero) gap between that read and this
+    //       write.
+    // Now that the write has landed, computeRanks() is re-run once more —
+    // this read is guaranteed to see this student's own row, plus anyone
+    // else who has already finished by this exact moment — and the result
+    // is corrected in place with a plain single-item UpdateCommand (see
+    // Result.reconcileRank). This is authoritative, not a delay/retry
+    // trick: it does not "wait and hope," it recomputes from whatever is
+    // actually true right now and writes that.
+    // HONEST LIMIT: this closes the gap for THIS request as of the moment
+    // its own write completed. It does not provide cross-request atomic
+    // consensus — two submissions whose writes land within the same
+    // instant can each finish reconciling before seeing the other's row,
+    // the same way two independent counters can. What it guarantees is
+    // that every stored rank was computed from real, already-persisted
+    // state at some well-defined moment no earlier than that student's own
+    // write — never from a stale pre-write snapshot — and that the *live*
+    // rank shown anywhere else in the app (leaderboard.js, rankings.js,
+    // /results/my/:testId) is always computed fresh at request time
+    // regardless of what's stored here, so any residual staleness in this
+    // stored snapshot is bounded to "until the next time anyone looks."
+    let finalOverallRank = overallRank, finalBatchRank = batchRank;
+    if (!isDuplicate) {
+      try {
+        const reconciled = await Result.reconcileRank(req.user.uid, testId, req.user.batch, obtainedMarks, tt);
+        finalOverallRank = reconciled.overallRank;
+        finalBatchRank = reconciled.batchRank;
+      } catch (e) {
+        // Reconciliation is a correction on top of an already-valid,
+        // already-persisted result — if it fails (transient DB error), the
+        // student's result is still safely saved with the pre-write rank
+        // as a fallback. Never let this fail the submission itself.
+        console.error('[RESULTS] rank reconciliation failed (non-fatal):', e);
+      }
+    }
+
+    if (!isDuplicate) {
+      await Promise.all([
+        Test.incrementAttemptCount(testId),
+        User.applySubmitStats(req.user.uid, { marksGained: obtainedMarks }),
+      ]);
+      queueResult({ submittedAt:new Date(), userName:req.user.name, userEmail:req.user.email, userPhone:req.user.phone||'', batch:req.user.batch, coachingName:req.user.coachingName, testTitle:test.title, subject:test.subject, topic:test.topic, obtainedMarks, totalMarks:test.totalMarks, percentage:pct, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:finalOverallRank, batchRank:finalBatchRank, testId, userId:req.user.uid });
+      invalidate({ testId, batch: req.user.batch }); // fire-and-forget — see leaderboardCache.js
+      // Coalesced: bursts of near-simultaneous submissions for the same
+      // test collapse into one top-10 read + one broadcast per short
+      // window instead of one per submission (see rankingBroadcast.js).
+      scheduleBroadcast(req.app.get('io'), testId);
+    }
+
+    const out = isDuplicate ? result : rd;
+    const outRank = isDuplicate ? out.rank : finalOverallRank;
+    const outBatchRank = isDuplicate ? out.batchRank : finalBatchRank;
+    res.json({ message: isDuplicate ? 'Already submitted' : 'Submitted', result:{ id: result.testId, obtainedMarks: out.obtainedMarks, totalMarks: test.totalMarks, correctAnswers: out.correctAnswers, wrongAnswers: out.wrongAnswers, notAttempted: out.notAttempted, timeTaken: out.timeTaken, rank: outRank, batchRank: outBatchRank, batch: out.batch, percentage: test.totalMarks>0 ? Math.round(out.obtainedMarks/test.totalMarks*1000)/10 : 0 } });
   } catch(err) { console.error('[RESULTS] submit:', err); res.status(500).json({ error:err.message||'Submission failed' }); }
 });
 
@@ -108,9 +178,13 @@ router.get('/my/:testId', authenticateStudent, async (req, res) => {
     // via q._id.
     const test = rawTest ? { ...rawTest, _id: rawTest.testId, questions: rawTest.questions.map(q => { const { questionImage, options, ...rest } = q; return { ...rest, _id: q.questionId, options: options.map(o => { const { imageData, ...oRest } = o; return oRest; }) }; }) } : null;
     const { overallRank, batchRank } = await Result.computeRanks(req.params.testId, result.batch, result.obtainedMarks, result.timeTaken);
-    const allForTest = (await Result.queryByTest(req.params.testId)).filter(r => !r.inProgress);
-    const total = allForTest.length;
-    const totalBatch = allForTest.filter(r => r.batch === result.batch).length;
+    // Participant counts used to be derived from a full fetch of every
+    // result row for the test (`.length`) — now a COUNT-only query, no
+    // item data transferred just to report two numbers.
+    const [total, totalBatch] = await Promise.all([
+      Result.countForTest(req.params.testId),
+      Result.countForTest(req.params.testId, result.batch),
+    ]);
     res.json({ result, test, rank:overallRank, batchRank, totalParticipants:total, totalBatchParticipants:totalBatch });
   } catch(err) { res.status(500).json({ error:err.message }); }
 });

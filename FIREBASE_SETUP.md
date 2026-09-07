@@ -7,14 +7,14 @@
 - Build → Authentication → Get started
 - Sign-in method → Enable **Email/Password** → Save
 
-### Authorize your Render domain
+### Authorize your domain
 - Authentication → Settings → Authorized domains
-- Add: `aiits.onrender.com`
+- Add: `aitts.in`
 
 ### Customize reset email template
 - Authentication → Templates → Password reset
 - From name: "Vibrant Academy"
-- Customize action URL: `https://aiits.onrender.com/__/auth/action`
+- Customize action URL: `https://aitts.in/__/auth/action`
 
 ### Get Frontend Config
 - Project settings (gear) → Your apps → Add app → Web

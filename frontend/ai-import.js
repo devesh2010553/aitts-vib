@@ -124,7 +124,15 @@
         html += '<strong>Q' + (q.number != null ? q.number : (i + 1)) + '</strong>' + confidenceBadge(q.confidence);
         html += '</div>';
         html += '<div style="font-size:13px;margin:4px 0;color:var(--text-sec)">' + esc((q.questionText || '').slice(0, 160)) + (q.questionText && q.questionText.length > 160 ? '…' : '') + '</div>';
-        if (q.questionImage) html += '<img src="data:image/png;base64,' + q.questionImage + '" style="max-width:160px;max-height:100px;border-radius:6px;border:1px solid var(--border);margin:4px 0">';
+        // questionImage is now a Cloudinary URL (or a full data: URI when
+        // Cloudinary isn't configured). Older jobs still hold bare base64 with
+        // no prefix, so add one only in that case.
+        if (q.questionImage) {
+          var qSrc = /^(https?:\/\/|data:)/i.test(q.questionImage)
+            ? q.questionImage
+            : 'data:image/png;base64,' + q.questionImage;
+          html += '<img src="' + qSrc + '" style="max-width:160px;max-height:100px;border-radius:6px;border:1px solid var(--border);margin:4px 0">';
+        }
         if (q.options && q.options.length) html += '<div style="font-size:12px;color:var(--text-muted)">' + q.options.map(function (o) { return esc(o.label) + '. ' + esc((o.text || '').slice(0, 40)) + (o.isCorrect ? ' ✓' : ''); }).join(' &nbsp; ') + '</div>';
         if (q.flags && q.flags.length) html += '<div style="font-size:11px;color:#b8860b;margin-top:3px"><i class="fas fa-flag"></i> ' + q.flags.map(esc).join('; ') + '</div>';
         html += '<button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="AiImport.reprocess(\'' + jobId + '\',' + i + ')"><i class="fas fa-redo"></i> Reprocess this question</button>';

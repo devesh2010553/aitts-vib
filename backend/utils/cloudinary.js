@@ -45,6 +45,69 @@ async function uploadIfBase64(value, folder) {
   return r.secure_url;
 }
 
+/**
+ * Uploads an image that may be EITHER a full data-URI ("data:image/png;base64,...")
+ * OR a bare base64 string with no prefix. The AI PDF import pipeline
+ * (utils/pdfExtract.js, utils/importQueue.js) produces bare base64 — sharp and
+ * pdf extraction both hand back `buf.toString('base64')` — so uploadIfBase64()
+ * silently passed those straight through and they ended up inline in Mongo.
+ *
+ * Returns a Cloudinary URL when configured. When it isn't, returns a proper
+ * `data:image/png;base64,...` URI rather than the bare string, because every
+ * renderer in this app assigns the value straight to `img.src` (see
+ * frontend/index.html `im.src=q.questionImage`) — a bare base64 string is a
+ * broken image there.
+ */
+async function uploadImageBase64(value, folder) {
+  if (!value || typeof value !== 'string') return value;
+  if (/^https?:\/\//i.test(value)) return value;            // already a URL
+  const dataUri = value.startsWith('data:') ? value : `data:image/png;base64,${value}`;
+  if (!configured) return dataUri;
+  try {
+    const r = await cloudinary.uploader.upload(dataUri, {
+      folder: folder || 'aiits/imports',
+      resource_type: 'image',
+      transformation: [{ width: 1600, height: 1600, crop: 'limit', quality: 'auto:good' }],
+    });
+    return r.secure_url;
+  } catch (e) {
+    console.error('[CLOUDINARY] Image upload failed, keeping inline data URI:', e.message);
+    return dataUri; // never fail the import over an asset upload
+  }
+}
+
+/**
+ * Uploads a non-image file (the original PDF) as a Cloudinary `raw` resource.
+ * Returns null when Cloudinary isn't configured so the caller can fall back to
+ * the old base64-in-Mongo path instead of losing the upload.
+ */
+async function uploadRawBuffer(buffer, fileName, folder) {
+  if (!configured) return null;
+  return new Promise((resolve) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: folder || 'aiits/imports/pdf',
+        resource_type: 'raw',
+        public_id: (fileName || 'document.pdf').replace(/[^\w.\-]/g, '_'),
+        use_filename: true,
+        unique_filename: true,
+      },
+      (err, result) => {
+        if (err) { console.error('[CLOUDINARY] PDF upload failed, falling back to base64:', err.message); return resolve(null); }
+        resolve(result.secure_url);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
+/** Pulls a previously uploaded raw resource back down as a Buffer. */
+async function fetchRawBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Could not fetch stored PDF (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 /** Uploads a raw Buffer (e.g. from multer memoryStorage) — used for ad images. */
 function uploadBuffer(buffer, folder) {
   return new Promise((resolve, reject) => {
@@ -72,4 +135,12 @@ async function uploadTestImages(questions) {
   }));
 }
 
-module.exports = { configured, uploadIfBase64, uploadBuffer, uploadTestImages };
+module.exports = {
+  configured,
+  uploadIfBase64,
+  uploadImageBase64,
+  uploadRawBuffer,
+  fetchRawBuffer,
+  uploadBuffer,
+  uploadTestImages,
+};

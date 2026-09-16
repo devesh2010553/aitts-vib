@@ -14,6 +14,18 @@ const PdfImportJob = require('../models/PdfImportJob');
 const { extractPdf } = require('./pdfExtract');
 const aiProvider = require('./aiProvider');
 const sharp = require('sharp');
+const { uploadImageBase64, fetchRawBuffer } = require('./cloudinary');
+
+/**
+ * Single read path for a job's original PDF. Prefers the Cloudinary raw URL
+ * and only falls back to the legacy inline base64 (jobs created before the
+ * Cloudinary switch, or a server with no Cloudinary credentials).
+ */
+async function getJobPdfBuffer(job) {
+  if (job.pdfUrl) return fetchRawBuffer(job.pdfUrl);
+  if (job.pdfBase64) return Buffer.from(job.pdfBase64, 'base64');
+  throw new Error('This import job has no stored PDF');
+}
 
 const PAGES_PER_BATCH = parseInt(process.env.AI_IMPORT_PAGES_PER_BATCH) || 1;
 
@@ -85,6 +97,10 @@ async function resolveAssets(q, extraction) {
       if (cropped) { questionImage = cropped; continue; }
     }
   }
+  // Push the asset to Cloudinary here, at the point it's created, so the
+  // multi-MB bytes never reach the job document. Everything downstream
+  // (review UI, create-draft, the Test in DynamoDB) then carries a URL.
+  questionImage = await uploadImageBase64(questionImage, 'aiits/imports/questions');
   return { questionImage, optionImageByLabel };
 }
 
@@ -130,7 +146,7 @@ async function processJob(jobId) {
 
   try {
     await setStage(job, 'Reading PDF...', { status: 'processing' });
-    const pdfBuffer = Buffer.from(job.pdfBase64, 'base64');
+    const pdfBuffer = await getJobPdfBuffer(job);
     const extraction = await extractPdf(pdfBuffer);
 
     await setStage(job, 'Extracting images and layout...', {
@@ -213,4 +229,4 @@ function mapJobQuestionsToTestQuestions(draftQuestions) {
     }));
 }
 
-module.exports = { enqueueImportJob, mapJobQuestionsToTestQuestions };
+module.exports = { enqueueImportJob, mapJobQuestionsToTestQuestions, getJobPdfBuffer };

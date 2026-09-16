@@ -28,6 +28,16 @@ Render's next build.
 
 ## What changed in code
 - `backend/utils/cloudinary.js` — new file, wraps the Cloudinary SDK.
+- `backend/routes/aiImport.js` + `backend/utils/importQueue.js` (AI PDF import):
+  - The uploaded **original PDF** goes to Cloudinary as a `raw` resource;
+    `PdfImportJob.pdfUrl` holds the URL and `pdfBase64` is left empty.
+    `GET /import/:jobId/pdf` now redirects to that URL.
+  - **Question images** extracted from the PDF (embedded images and cropped
+    page regions) upload to Cloudinary the moment they're produced, so the
+    job document never carries image bytes.
+  - `POST /import/:jobId/create-draft` runs the questions through
+    `uploadTestImages()` as a safety net, so nothing base64 reaches DynamoDB
+    even for a job imported before this change.
 - `backend/routes/admin.js`:
   - `POST/PUT /api/admin/tests` — every `questionImage` and option
     `imageData` that arrives as a base64 data-URI gets uploaded to
@@ -48,8 +58,9 @@ Cloudinary from now on. If you want to bulk-migrate old base64 images too,
 that's a separate one-off script — say the word if you want it written.
 
 ## Fallback behavior
-If Cloudinary isn't configured yet, question/option image uploads silently
-keep working as base64 (with a console warning) so you're not blocked — but
+If Cloudinary isn't configured yet, question/option image uploads (including
+PDF-import assets and the original PDF itself) silently keep working as base64
+(with a console warning) so you're not blocked — but
 ad-image upload will fail outright with a clear error, since that path was
 specifically the one adding the most storage weight and is meant to require
 Cloudinary going forward.

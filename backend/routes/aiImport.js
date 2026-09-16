@@ -16,7 +16,8 @@ const Test = require('../dynamo/testModel'); // was: const Test = require('../mo
 const { authenticateAdmin } = require('../middleware/auth');
 const { extractPdf, sha256 } = require('../utils/pdfExtract');
 const aiProvider = require('../utils/aiProvider');
-const { enqueueImportJob, mapJobQuestionsToTestQuestions } = require('../utils/importQueue');
+const { enqueueImportJob, mapJobQuestionsToTestQuestions, getJobPdfBuffer } = require('../utils/importQueue');
+const { uploadRawBuffer, uploadImageBase64, uploadTestImages } = require('../utils/cloudinary');
 
 router.use(authenticateAdmin); // spec #38 — only authenticated admins/teachers, never students
 
@@ -53,10 +54,17 @@ router.post('/import-pdf', upload.single('pdf'), async (req, res) => {
       });
     }
 
+    // Store the original in Cloudinary (raw resource) and keep only the URL in
+    // Mongo. uploadRawBuffer returns null when Cloudinary isn't configured, in
+    // which case we fall back to the old inline-base64 path rather than
+    // rejecting the upload.
+    const pdfUrl = await uploadRawBuffer(req.file.buffer, req.file.originalname, 'aiits/imports/pdf');
+
     const job = await PdfImportJob.create({
       status: 'queued', stage: 'Queued',
       fileName: req.file.originalname, fileHash: hash,
-      pdfBase64: req.file.buffer.toString('base64'),
+      pdfUrl: pdfUrl || '',
+      pdfBase64: pdfUrl ? '' : req.file.buffer.toString('base64'),
       createdBy: (req.admin && req.admin.email) || '',
     });
 
@@ -91,8 +99,11 @@ router.get('/import/:jobId', async (req, res) => {
 // ── 3b. Original PDF — for side-by-side reference (spec #25, #26) ──
 router.get('/import/:jobId/pdf', async (req, res) => {
   try {
-    const job = await PdfImportJob.findById(req.params.jobId).select('pdfBase64 fileName').lean();
-    if (!job || !job.pdfBase64) return res.status(404).json({ error: 'Not found' });
+    const job = await PdfImportJob.findById(req.params.jobId).select('pdfUrl pdfBase64 fileName').lean();
+    if (!job) return res.status(404).json({ error: 'Not found' });
+    // Cloudinary-hosted: redirect so the bytes never pass through this server.
+    if (job.pdfUrl) return res.redirect(job.pdfUrl);
+    if (!job.pdfBase64) return res.status(404).json({ error: 'Not found' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${(job.fileName || 'document.pdf').replace(/"/g, '')}"`);
     res.send(Buffer.from(job.pdfBase64, 'base64'));
@@ -108,7 +119,7 @@ router.post('/import/:jobId/reprocess-question/:index', async (req, res) => {
     const q = job.questions[i];
     if (!q) return res.status(404).json({ error: 'Question not found in this job' });
 
-    const pdfBuffer = Buffer.from(job.pdfBase64, 'base64');
+    const pdfBuffer = await getJobPdfBuffer(job);
     const extraction = await extractPdf(pdfBuffer);
     const pageStart = q.pageStart || 1, pageEnd = q.pageEnd || pageStart;
     const pageNumbers = [];
@@ -151,12 +162,14 @@ router.put('/import/:jobId/questions/:index/image', async (req, res) => {
     const job = await PdfImportJob.findById(req.params.jobId);
     if (!job || !job.questions[req.params.index]) return res.status(404).json({ error: 'Not found' });
 
-    const pdfBuffer = Buffer.from(job.pdfBase64, 'base64');
+    const pdfBuffer = await getJobPdfBuffer(job);
     const extraction = await extractPdf(pdfBuffer);
     const found = extraction.embeddedImages.find(i => i.index === embeddedImageIndex);
     if (!found) return res.status(404).json({ error: 'Image index not found in this document' });
 
-    job.questions[req.params.index].questionImage = found.base64;
+    // Same treatment as the automatic path — the replacement goes to Cloudinary,
+    // not into the job document as base64.
+    job.questions[req.params.index].questionImage = await uploadImageBase64(found.base64, 'aiits/imports/questions');
     await job.save();
     res.json({ message: 'Image updated' });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -171,7 +184,9 @@ router.post('/import/:jobId/create-draft', async (req, res) => {
     if (job.createdTestId) return res.status(200).json({ testId: job.createdTestId, message: 'Draft already created for this import' });
 
     const meta = req.body || {}; // optional teacher-supplied metadata (spec #33) — title/subject/topic/duration/batches
-    const questions = mapJobQuestionsToTestQuestions(job.questions);
+    // Safety net: anything still inline (legacy job, or Cloudinary was down
+    // mid-import) gets uploaded here so no base64 ever lands in DynamoDB.
+    const questions = await uploadTestImages(mapJobQuestionsToTestQuestions(job.questions));
 
     const test = await Test.create({
       title: meta.title || job.fileName || 'AI Imported Test',

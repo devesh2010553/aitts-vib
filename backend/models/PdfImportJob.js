@@ -18,7 +18,7 @@ const draftQuestionSchema = new Schema({
   pageStart:     { type: Number },
   pageEnd:       { type: Number },
   questionText:  { type: String, default: '' },
-  questionImage: { type: String, default: '' },  // base64, same convention as Test.questionSchema — reuses existing storage, no new asset system
+  questionImage: { type: String, default: '' },  // Cloudinary URL (data-URI fallback if Cloudinary is unconfigured) — same convention as Test.questionSchema
   options: [{
     label:     { type: String },                  // original label as printed (A/B/1/i) — kept for teacher review, not required by Test schema
     text:      { type: String, default: '' },
@@ -42,9 +42,12 @@ const pdfImportJobSchema = new Schema({
   fileName: { type: String, default: '' },
   fileHash: { type: String, index: true }, // sha256 — duplicate-import detection (#44)
   pageCount: { type: Number, default: 0 },
-  // Original PDF, kept for teacher side-by-side reference (#25). Base64, same
-  // storage convention as everything else in this app. Capped at upload time
-  // (see routes/aiImport.js) to stay well under MongoDB's 16MB document limit.
+  // Original PDF, kept for teacher side-by-side reference (#25).
+  // PREFERRED: pdfUrl — a Cloudinary `raw` resource URL, a few bytes in Mongo.
+  // FALLBACK: pdfBase64 — only written when Cloudinary isn't configured, and
+  // still read for jobs created before the Cloudinary switch. Always read the
+  // PDF through getJobPdfBuffer() (utils/importQueue.js), never these directly.
+  pdfUrl:    { type: String, default: '' },
   pdfBase64: { type: String, default: '' },
 
   questionsDetected:  { type: Number, default: 0 },

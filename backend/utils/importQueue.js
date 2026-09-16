@@ -22,7 +22,7 @@ const { uploadImageBase64, fetchRawBuffer } = require('./cloudinary');
  * Cloudinary switch, or a server with no Cloudinary credentials).
  */
 async function getJobPdfBuffer(job) {
-  if (job.pdfUrl) return fetchRawBuffer(job.pdfUrl);
+  if (job.pdfUrl) return fetchRawBuffer(job.pdfUrl, job.pdfPublicId);
   if (job.pdfBase64) return Buffer.from(job.pdfBase64, 'base64');
   throw new Error('This import job has no stored PDF');
 }
@@ -32,16 +32,18 @@ const PAGES_PER_BATCH = parseInt(process.env.AI_IMPORT_PAGES_PER_BATCH) || 1;
 const queue = [];
 let draining = false;
 
-function enqueueImportJob(jobId) {
-  queue.push(jobId);
+function enqueueImportJob(jobId, pdfBuffer) {
+  // pdfBuffer is optional — when the upload route hands it over we process
+  // straight from memory instead of downloading our own upload back again.
+  queue.push({ jobId, pdfBuffer });
   if (!draining) drain();
 }
 
 async function drain() {
   draining = true;
   while (queue.length) {
-    const jobId = queue.shift();
-    try { await processJob(jobId); }
+    const { jobId, pdfBuffer } = queue.shift();
+    try { await processJob(jobId, pdfBuffer); }
     catch (e) { console.error('[AI-IMPORT] Unhandled error processing job', jobId, ':', e.message); }
   }
   draining = false;
@@ -140,13 +142,13 @@ function applyAnswerKey(questions, answerKey) {
   }
 }
 
-async function processJob(jobId) {
+async function processJob(jobId, pdfBufferFromUpload) {
   const job = await PdfImportJob.findById(jobId);
   if (!job) return;
 
   try {
     await setStage(job, 'Reading PDF...', { status: 'processing' });
-    const pdfBuffer = await getJobPdfBuffer(job);
+    const pdfBuffer = pdfBufferFromUpload || await getJobPdfBuffer(job);
     const extraction = await extractPdf(pdfBuffer);
 
     await setStage(job, 'Extracting images and layout...', {

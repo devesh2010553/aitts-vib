@@ -47,8 +47,9 @@ const pdfImportJobSchema = new Schema({
   // FALLBACK: pdfBase64 — only written when Cloudinary isn't configured, and
   // still read for jobs created before the Cloudinary switch. Always read the
   // PDF through getJobPdfBuffer() (utils/importQueue.js), never these directly.
-  pdfUrl:    { type: String, default: '' },
-  pdfBase64: { type: String, default: '' },
+  pdfUrl:      { type: String, default: '' },
+  pdfPublicId: { type: String, default: '' }, // needed to mint a signed URL if public delivery of raw/PDF is disabled on the account
+  pdfBase64:   { type: String, default: '' },
 
   questionsDetected:  { type: Number, default: 0 },
   totalQuestionsGuess:{ type: Number, default: 0 }, // rough estimate for progress display, not exact

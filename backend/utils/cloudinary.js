@@ -91,20 +91,56 @@ async function uploadRawBuffer(buffer, fileName, folder) {
         public_id: (fileName || 'document.pdf').replace(/[^\w.\-]/g, '_'),
         use_filename: true,
         unique_filename: true,
+        // Many Cloudinary accounts ship with PDF/ZIP delivery disabled under
+        // Settings -> Security, which makes a plain GET on the secure_url come
+        // back 401. Asking for public access explicitly covers the case where
+        // the account default is 'authenticated'; fetchRawBuffer() below still
+        // falls back to a signed URL if delivery is restricted anyway.
+        access_mode: 'public',
+        type: 'upload',
       },
       (err, result) => {
         if (err) { console.error('[CLOUDINARY] PDF upload failed, falling back to base64:', err.message); return resolve(null); }
-        resolve(result.secure_url);
+        resolve({ url: result.secure_url, publicId: result.public_id });
       }
     );
     stream.end(buffer);
   });
 }
 
+/**
+ * A short-lived signed delivery URL for a raw resource. Used as the fallback
+ * when the plain secure_url is refused (401/403) because the account restricts
+ * delivery of PDF/raw files.
+ */
+function signedRawUrl(publicId) {
+  return cloudinary.utils.private_download_url(publicId, '', {
+    resource_type: 'raw',
+    type: 'upload',
+    expires_at: Math.floor(Date.now() / 1000) + 600, // 10 minutes is plenty for a server-side fetch
+  });
+}
+
 /** Pulls a previously uploaded raw resource back down as a Buffer. */
-async function fetchRawBuffer(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Could not fetch stored PDF (${res.status})`);
+async function fetchRawBuffer(url, publicId) {
+  let res = await fetch(url);
+
+  // 401/403 here means Cloudinary is refusing public delivery of the raw file
+  // (the usual cause is "Allow delivery of PDF and ZIP files" being off under
+  // Settings -> Security). A signed URL, generated with the API secret this
+  // server already holds, is delivered regardless of that setting.
+  if (!res.ok && (res.status === 401 || res.status === 403) && publicId && configured) {
+    console.warn(`[CLOUDINARY] Public delivery refused (${res.status}) for ${publicId} — retrying with a signed URL. Enable "Allow delivery of PDF and ZIP files" in Cloudinary Settings -> Security to avoid this round-trip.`);
+    res = await fetch(signedRawUrl(publicId));
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      res.status === 401 || res.status === 403
+        ? `Cloudinary refused to deliver the stored PDF (${res.status}). Enable "Allow delivery of PDF and ZIP files" under Settings -> Security in your Cloudinary console.`
+        : `Could not fetch stored PDF (${res.status})`
+    );
+  }
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -141,6 +177,7 @@ module.exports = {
   uploadImageBase64,
   uploadRawBuffer,
   fetchRawBuffer,
+  signedRawUrl,
   uploadBuffer,
   uploadTestImages,
 };

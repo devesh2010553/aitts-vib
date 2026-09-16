@@ -17,7 +17,7 @@ const { authenticateAdmin } = require('../middleware/auth');
 const { extractPdf, sha256 } = require('../utils/pdfExtract');
 const aiProvider = require('../utils/aiProvider');
 const { enqueueImportJob, mapJobQuestionsToTestQuestions, getJobPdfBuffer } = require('../utils/importQueue');
-const { uploadRawBuffer, uploadImageBase64, uploadTestImages } = require('../utils/cloudinary');
+const { uploadRawBuffer, uploadImageBase64, uploadTestImages, signedRawUrl } = require('../utils/cloudinary');
 
 router.use(authenticateAdmin); // spec #38 — only authenticated admins/teachers, never students
 
@@ -58,17 +58,21 @@ router.post('/import-pdf', upload.single('pdf'), async (req, res) => {
     // Mongo. uploadRawBuffer returns null when Cloudinary isn't configured, in
     // which case we fall back to the old inline-base64 path rather than
     // rejecting the upload.
-    const pdfUrl = await uploadRawBuffer(req.file.buffer, req.file.originalname, 'aiits/imports/pdf');
+    const stored = await uploadRawBuffer(req.file.buffer, req.file.originalname, 'aiits/imports/pdf');
 
     const job = await PdfImportJob.create({
       status: 'queued', stage: 'Queued',
       fileName: req.file.originalname, fileHash: hash,
-      pdfUrl: pdfUrl || '',
-      pdfBase64: pdfUrl ? '' : req.file.buffer.toString('base64'),
+      pdfUrl: (stored && stored.url) || '',
+      pdfPublicId: (stored && stored.publicId) || '',
+      pdfBase64: stored ? '' : req.file.buffer.toString('base64'),
       createdBy: (req.admin && req.admin.email) || '',
     });
 
-    enqueueImportJob(job._id); // not awaited — processing happens in the background, request returns now
+    // The queue is in-process, so hand the buffer we already have straight to
+    // the worker. The initial import then never round-trips to Cloudinary at
+    // all — only the later reprocess/image-replace routes need to re-fetch.
+    enqueueImportJob(job._id, req.file.buffer); // not awaited — processing happens in the background, request returns now
     res.status(202).json({ jobId: job._id, status: 'queued' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -99,10 +103,14 @@ router.get('/import/:jobId', async (req, res) => {
 // ── 3b. Original PDF — for side-by-side reference (spec #25, #26) ──
 router.get('/import/:jobId/pdf', async (req, res) => {
   try {
-    const job = await PdfImportJob.findById(req.params.jobId).select('pdfUrl pdfBase64 fileName').lean();
+    const job = await PdfImportJob.findById(req.params.jobId).select('pdfUrl pdfPublicId pdfBase64 fileName').lean();
     if (!job) return res.status(404).json({ error: 'Not found' });
     // Cloudinary-hosted: redirect so the bytes never pass through this server.
-    if (job.pdfUrl) return res.redirect(job.pdfUrl);
+    // Sign the URL when we have the public_id, so the teacher's browser isn't
+    // refused by the account's PDF/raw delivery restriction either.
+    if (job.pdfUrl) {
+      return res.redirect(job.pdfPublicId ? signedRawUrl(job.pdfPublicId) : job.pdfUrl);
+    }
     if (!job.pdfBase64) return res.status(404).json({ error: 'Not found' });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="${(job.fileName || 'document.pdf').replace(/"/g, '')}"`);

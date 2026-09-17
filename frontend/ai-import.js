@@ -133,7 +133,16 @@
             : 'data:image/png;base64,' + q.questionImage;
           html += '<img src="' + qSrc + '" style="max-width:160px;max-height:100px;border-radius:6px;border:1px solid var(--border);margin:4px 0">';
         }
-        if (q.options && q.options.length) html += '<div style="font-size:12px;color:var(--text-muted)">' + q.options.map(function (o) { return esc(o.label) + '. ' + esc((o.text || '').slice(0, 40)) + (o.isCorrect ? ' ✓' : ''); }).join(' &nbsp; ') + '</div>';
+        if (q.options && q.options.length) {
+          html += '<div style="font-size:12px;color:var(--text-muted)">' + q.options.map(function (o) {
+            var line = esc(o.label) + '. ' + esc((o.text || '').slice(0, 40)) + (o.isCorrect ? ' ✓' : '');
+            if (o.imageData) {
+              var oSrc = /^(https?:\/\/|data:)/i.test(o.imageData) ? o.imageData : 'data:image/png;base64,' + o.imageData;
+              line += '<br><img src="' + oSrc + '" style="max-width:90px;max-height:60px;border-radius:4px;border:1px solid var(--border);margin:2px 0">';
+            }
+            return '<span style="display:inline-block;vertical-align:top;margin:2px 10px 2px 0">' + line + '</span>';
+          }).join('') + '</div>';
+        }
         if (q.flags && q.flags.length) html += '<div style="font-size:11px;color:#b8860b;margin-top:3px"><i class="fas fa-flag"></i> ' + q.flags.map(esc).join('; ') + '</div>';
         html += '<button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="AiImport.reprocess(\'' + jobId + '\',' + i + ')"><i class="fas fa-redo"></i> Reprocess this question</button>';
         html += '</div>';

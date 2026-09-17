@@ -13,17 +13,31 @@
  * read from process.env.GROQ_API_KEY and never leaves the server.
  *
  * Groq's free tier is real (no credit card required) but rate-limited —
- * expect to hit its per-minute token limit on a large, image-heavy PDF
- * faster than on a paid tier; importQueue.js already processes one document
- * at a time and page-batches requests, which helps, but a very long scanned
- * paper may still need retrying later if you're rate-limited mid-import.
- * Vision support on Groq is limited to specific models — confirm
- * AI_IMPORT_MODEL below is still current/vision-capable at
- * console.groq.com/docs/vision before deploying, model availability changes.
+ * expect to hit its per-minute request/token limit partway through a
+ * multi-page PDF, not just on a single huge one; importQueue.js processes
+ * one page at a time so a 15-page paper is 15 separate calls in a row.
+ * callModel() below retries a 429/5xx with backoff (honoring Groq's
+ * Retry-After header when present) instead of giving up on the first hit —
+ * without that, a batch that got rate-limited was silently recorded as
+ * "failed" and its questions were gone from the final draft for good,
+ * which is why large imports used to stop after only 2-3 questions.
+ *
+ * Vision models on Groq also cap how many images can go in ONE request —
+ * qwen3.6-27b allows 5, qwen3.8-27b allows only 3 (console.groq.com/docs/vision).
+ * A page with more diagrams than that used to make the WHOLE request 400,
+ * losing every question on that page. buildUserContent() below caps what it
+ * sends to the active model's limit and tells the model what got left out,
+ * instead of oversending and losing the page.
  */
 
 const MODEL = process.env.AI_IMPORT_MODEL || 'qwen/qwen3.8-27b';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+// Confirm at console.groq.com/docs/vision before changing models — this is
+// the "images per request" ceiling Groq enforces per model, not a guess.
+const MAX_IMAGES_PER_REQUEST = { 'qwen/qwen3.6-27b': 5, 'qwen/qwen3.8-27b': 3 };
+const IMAGE_CAP = MAX_IMAGES_PER_REQUEST[MODEL] || 3; // unknown model: assume the tighter limit
+const MAX_RETRIES = parseInt(process.env.AI_IMPORT_MAX_RETRIES) || 4;
+const RETRY_BASE_MS = parseInt(process.env.AI_IMPORT_RETRY_BASE_MS) || 3000;
 
 const SYSTEM_PROMPT = `You are a document-reconstruction engine for a JEE/NEET-style test platform. You are given pages of an existing question paper (as images and/or extracted text) and must RECONSTRUCT it exactly as a structured question list — you are NOT writing new questions.
 
@@ -35,6 +49,8 @@ Hard rules:
 - A question that continues across a page break is still ONE question — merge it, do not split it.
 - Use visual position (not just text order) to determine reading order on multi-column pages.
 - If a question has an associated diagram/figure/table/graph and it was extracted as one of the numbered "Embedded image #N" assets provided to you, reference it by that number. If the diagram is NOT among the embedded images (common for vector-drawn diagrams, e.g. circuit/geometry figures made of lines rather than a raster image) but IS visible in a page image you were given, instead return an approximate bounding box [x0,y0,x1,y1] in 0–1 normalized coordinates (relative to that full page image) so it can be cropped out — do not attempt to redraw or describe it as text.
+- The SAME asset mechanism applies to individual OPTIONS, not just the question as a whole — this is common in "which of the following figures..." style questions. If a specific option (not the question stem) has its own diagram, put that option's asset on the option object itself (see schema below: each option may carry its own "asset"), not on the question's top-level "assets" array.
+- Some pages may include a note like "N image(s) on this page were not attached (limit reached)". If a question or option you can see in the page image clearly has a diagram that is missing from the embedded-image numbers you were given (because it was left out under that limit), do NOT invent a bounding box guess for it — instead leave that asset empty, set confidence to "review", and add a flag such as "diagram present but not attached — reprocess this page alone to capture it".
 - If you cannot reliably determine something (option count, boundary, whether a diagram belongs to this question, OCR of unclear text), do not guess — set confidence to "review" or "low" and add a short flag string explaining what's uncertain.
 - Only classify a numbered/lettered list as multiple-choice OPTIONS if it's actually presented as answer choices for the preceding question — not every numbered list in a document is an MCQ option set.
 
@@ -47,7 +63,7 @@ Respond with STRICT JSON ONLY (no markdown fences, no commentary) matching exact
       "questionText": "<string, header/footer stripped>",
       "questionType": "mcq" | "multi" | "numerical" | "assertion-reason" | "true-false" | "match" | "subjective" | "other",
       "isMultiChoice": <bool>,
-      "options": [ { "label": "<A/B/1/i as printed>", "text": "<string>" } ],
+      "options": [ { "label": "<A/B/1/i as printed>", "text": "<string>", "asset": null | { "type": "embedded", "imageIndex": <int> } | { "type": "region", "page": <int>, "box": [x0,y0,x1,y1] } } ],
       "marks": <number or null>,
       "negativeMarks": <number or null>,
       "assets": [ { "type": "embedded", "imageIndex": <int> } | { "type": "region", "page": <int>, "box": [x0,y0,x1,y1] } ],
@@ -70,6 +86,15 @@ function buildUserContent(batch) {
   const relevantEmbedded = (batch.embeddedImages || []).filter(img => batch.pageNumbers.includes(img.page));
   const pagesWithEmbedded = new Set(relevantEmbedded.map(img => img.page));
 
+  // Groq enforces a hard per-model cap on images per request (IMAGE_CAP,
+  // see top of file) — exceeding it 400s the ENTIRE call, losing every
+  // question on the page(s) in this batch, not just the extra image. Page
+  // images take priority (without one, a scanned page can't be read at
+  // all); embedded diagrams fill whatever budget is left, in order.
+  let imagesUsed = 0;
+  let omittedCount = 0;
+  const imageBlocks = []; // collected separately so page-image and embedded-image budgeting share one counter
+
   for (const pageNum of batch.pageNumbers) {
     const text = batch.textByPage[pageNum - 1] || '';
     if (text) content.push({ type: 'text', text: `--- Page ${pageNum} extracted text ---\n${text}` });
@@ -83,15 +108,25 @@ function buildUserContent(batch) {
     // every page's image unconditionally (the original design) blew well
     // past an 8000 TPM limit on even a 2-page batch.
     const needsImage = batch.forceImages || scannedSet.has(pageNum) || pagesWithEmbedded.has(pageNum);
-    if (needsImage && batch.pageImages[pageNum]) {
-      content.push({ type: 'text', text: `--- Page ${pageNum} rendered image ---` });
-      content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${batch.pageImages[pageNum]}`, detail: 'low' } });
+    if (needsImage && batch.pageImages[pageNum] && imagesUsed < IMAGE_CAP) {
+      imageBlocks.push({ type: 'text', text: `--- Page ${pageNum} rendered image ---` });
+      imageBlocks.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${batch.pageImages[pageNum]}`, detail: 'low' } });
+      imagesUsed++;
+    } else if (needsImage) {
+      omittedCount++;
     }
   }
 
   for (const img of relevantEmbedded) {
-    content.push({ type: 'text', text: `--- Embedded image #${img.index} (from page ${img.page}) ---` });
-    content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img.base64}`, detail: 'low' } });
+    if (imagesUsed >= IMAGE_CAP) { omittedCount++; continue; }
+    imageBlocks.push({ type: 'text', text: `--- Embedded image #${img.index} (from page ${img.page}) ---` });
+    imageBlocks.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img.base64}`, detail: 'low' } });
+    imagesUsed++;
+  }
+
+  content.push(...imageBlocks);
+  if (omittedCount > 0) {
+    content.push({ type: 'text', text: `Note: ${omittedCount} image(s) on this page were not attached (this model allows at most ${IMAGE_CAP} images per request). Follow the instruction above for any question/option that appears to need one of them — do not guess its content.` });
   }
 
   return content;
@@ -104,33 +139,73 @@ function parseJsonResponse(text) {
   return JSON.parse(cleaned);
 }
 
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
 async function callModel(content) {
   if (!process.env.GROQ_API_KEY) {
     throw new Error('GROQ_API_KEY is not set — configure it to enable AI PDF import.');
   }
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 8000,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content },
-      ],
-    }),
+  const body = JSON.stringify({
+    model: MODEL,
+    max_tokens: 16000, // Groq's documented ceiling for these models is 16,384 — this leaves headroom rather than truncating mid-JSON on a page with many/long questions
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content },
+    ],
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`AI provider error ${res.status}: ${body.slice(0, 300)}`);
+
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    let res;
+    try {
+      res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
+        body,
+      });
+    } catch (networkErr) {
+      // fetch itself threw (DNS blip, connection reset) — treat exactly like
+      // a retryable server error rather than failing the whole page.
+      lastErr = networkErr;
+      if (attempt < MAX_RETRIES) { await sleep(RETRY_BASE_MS * Math.pow(2, attempt)); continue; }
+      throw networkErr;
+    }
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      if (!text) throw new Error('AI provider returned no text content');
+      try {
+        return parseJsonResponse(text);
+      } catch (parseErr) {
+        // Occasionally the model returns truncated/malformed JSON (more
+        // likely right at the old 8000-token ceiling, less likely now, but
+        // still possible on an unusually dense page) — that used to fail
+        // the whole page instantly. Worth one retry: it's non-deterministic
+        // output, a second attempt at the same page often comes back clean.
+        lastErr = new Error(`AI provider returned invalid JSON: ${parseErr.message}`);
+        if (attempt === MAX_RETRIES) throw lastErr;
+        console.warn(`[AI-IMPORT] Malformed JSON from model, retrying (attempt ${attempt+1}/${MAX_RETRIES})`);
+        await sleep(RETRY_BASE_MS);
+        continue;
+      }
+    }
+
+    // 429 (rate limit) and 5xx (transient) are worth retrying — a page
+    // that's simply the Nth request this minute is not a bad page, and
+    // giving up on it here is exactly what used to silently drop most of a
+    // multi-page document down to just its first couple of pages.
+    const retryable = res.status === 429 || res.status >= 500;
+    const body_ = await res.text().catch(() => '');
+    lastErr = new Error(`AI provider error ${res.status}: ${body_.slice(0, 300)}`);
+    if (!retryable || attempt === MAX_RETRIES) throw lastErr;
+
+    const retryAfterHeader = res.headers.get('retry-after');
+    const waitMs = retryAfterHeader ? Math.max(1000, parseFloat(retryAfterHeader) * 1000) : RETRY_BASE_MS * Math.pow(2, attempt);
+    console.warn(`[AI-IMPORT] ${res.status} from Groq, retrying in ${Math.round(waitMs/1000)}s (attempt ${attempt+1}/${MAX_RETRIES})`);
+    await sleep(waitMs);
   }
-  const data = await res.json();
-  const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-  if (!text) throw new Error('AI provider returned no text content');
-  return parseJsonResponse(text);
+  throw lastErr;
 }
 
 /**
@@ -157,4 +232,4 @@ async function analyzeRegion(batch) {
   return analyzeBatch(batch);
 }
 
-module.exports = { analyzeBatch, analyzeRegion, MODEL };
+module.exports = { analyzeBatch, analyzeRegion, MODEL, IMAGE_CAP };

@@ -28,6 +28,12 @@ async function getJobPdfBuffer(job) {
 }
 
 const PAGES_PER_BATCH = parseInt(process.env.AI_IMPORT_PAGES_PER_BATCH) || 1;
+// Small gap between successive Groq calls so a multi-page import doesn't
+// front-load requests into the same minute and trip the free-tier
+// per-minute rate limit before it even has a chance to retry (aiProvider.js
+// retries reactively; this is the proactive half of the same fix).
+const BATCH_DELAY_MS = parseInt(process.env.AI_IMPORT_BATCH_DELAY_MS) || 1500;
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 const queue = [];
 let draining = false;
@@ -82,32 +88,52 @@ async function cropRegion(pageImageBase64, box) {
   }
 }
 
-/** Resolve a question's `assets` refs (from the AI response) into actual
- *  base64 image data — embedded-image refs splice bytes we already
- *  extracted locally; region refs crop the page render via sharp. Either
- *  way the AI itself never had to reproduce or redraw image content. */
+/** Resolves ONE asset ref (from the AI response) into base64 image data —
+ *  an embedded-image ref splices bytes already extracted locally, a region
+ *  ref crops the page render via sharp. Returns '' if it can't be resolved. */
+async function resolveOneAsset(asset, extraction) {
+  if (!asset) return '';
+  if (asset.type === 'embedded' && typeof asset.imageIndex === 'number') {
+    const found = extraction.embeddedImages.find(i => i.index === asset.imageIndex);
+    if (found) return found.base64;
+  }
+  if (asset.type === 'region' && Array.isArray(asset.box) && extraction.pageImages[asset.page]) {
+    const cropped = await cropRegion(extraction.pageImages[asset.page], asset.box);
+    if (cropped) return cropped;
+  }
+  return '';
+}
+
+/** Resolve a question's `assets` refs AND each option's own `asset` (added
+ *  so option-only diagrams — "which of these figures..." questions — get
+ *  uploaded too; previously only the question-level asset was ever wired
+ *  up and option images silently never made it into the draft). Uploads
+ *  each resolved image to Cloudinary immediately so raw base64 never sits
+ *  in the job document. */
 async function resolveAssets(q, extraction) {
   let questionImage = '';
-  const optionImageByLabel = {}; // not currently populated by the AI schema, reserved for a future per-option asset case
   for (const asset of (q.assets || [])) {
-    if (asset.type === 'embedded' && typeof asset.imageIndex === 'number') {
-      const found = extraction.embeddedImages.find(i => i.index === asset.imageIndex);
-      if (found) { questionImage = found.base64; continue; }
-    }
-    if (asset.type === 'region' && Array.isArray(asset.box) && extraction.pageImages[asset.page]) {
-      const cropped = await cropRegion(extraction.pageImages[asset.page], asset.box);
-      if (cropped) { questionImage = cropped; continue; }
-    }
+    const resolved = await resolveOneAsset(asset, extraction);
+    if (resolved) { questionImage = resolved; break; } // first resolvable asset wins — the schema expects at most one diagram per question stem
   }
-  // Push the asset to Cloudinary here, at the point it's created, so the
-  // multi-MB bytes never reach the job document. Everything downstream
-  // (review UI, create-draft, the Test in DynamoDB) then carries a URL.
   questionImage = await uploadImageBase64(questionImage, 'aiits/imports/questions');
+
+  const optionImageByLabel = {};
+  for (const o of (q.options || [])) {
+    if (!o.asset || !o.label) continue;
+    const resolved = await resolveOneAsset(o.asset, extraction);
+    if (resolved) optionImageByLabel[String(o.label).toUpperCase()] = await uploadImageBase64(resolved, 'aiits/imports/options');
+  }
+
   return { questionImage, optionImageByLabel };
 }
 
-function mapToDraftQuestion(q, questionImage) {
-  const options = (q.options || []).map(o => ({ label: o.label || '', text: o.text || '', imageData: '', isCorrect: false }));
+function mapToDraftQuestion(q, questionImage, optionImageByLabel) {
+  const options = (q.options || []).map(o => ({
+    label: o.label || '', text: o.text || '',
+    imageData: (optionImageByLabel && optionImageByLabel[String(o.label || '').toUpperCase()]) || '',
+    isCorrect: false,
+  }));
   const flags = Array.isArray(q.flags) ? q.flags.slice(0, 10) : [];
   let confidence = ['high', 'review', 'low'].includes(q.confidence) ? q.confidence : 'review';
   if (q.marks == null) flags.push('Marks not detected in PDF — confirm before publishing');
@@ -189,14 +215,16 @@ async function processJob(jobId, pdfBufferFromUpload) {
       }
 
       for (const q of result.questions) {
-        const { questionImage } = await resolveAssets(q, extraction);
-        allQuestions.push(mapToDraftQuestion(q, questionImage));
+        const { questionImage, optionImageByLabel } = await resolveAssets(q, extraction);
+        allQuestions.push(mapToDraftQuestion(q, questionImage, optionImageByLabel));
       }
       allAnswerKey = allAnswerKey.concat(result.answerKey);
 
       // Incremental progress — the whole point of async processing is a
       // teacher can watch real progress rather than stare at a spinner (#37).
       await setStage(job, job.stage, { questionsDetected: allQuestions.length, 'questions': allQuestions });
+
+      if (bi < batches.length - 1 && BATCH_DELAY_MS > 0) await sleep(BATCH_DELAY_MS);
     }
 
     applyAnswerKey(allQuestions, allAnswerKey);

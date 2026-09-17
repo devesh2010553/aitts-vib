@@ -40,6 +40,48 @@ app.set('io', io);
 app.set('trust proxy', 1);
 
 app.use((req,res,next) => { res.setHeader('X-Content-Type-Options','nosniff'); res.setHeader('X-XSS-Protection','1; mode=block'); next(); });
+
+// --- Canonical URL normalization -------------------------------------------
+// Fixes the Search Console "Duplicate, Google chose different canonical"
+// warning on the homepage. Root cause: several equivalent URLs all served
+// 200 with the SAME static <link rel="canonical" href="https://aitts.in/">
+// baked into frontend/index.html (https://aitts.in, https://aitts.in/,
+// https://www.aitts.in, and — before this fix — a mismatched og:url with no
+// trailing slash). With no server-side redirect tying those variants
+// together, Google was free to pick whichever one it liked as "the" URL
+// instead of trusting our tag. A single 301 chain here collapses every
+// variant to ONE URL before it reaches the catch-all route below, so the
+// canonical tag's claim and the URL Google actually lands on always match.
+//
+// Chosen convention (matches sitemap.xml and every canonical tag in
+// frontend/*.html): root path keeps its trailing slash (https://aitts.in/),
+// every other path has NO trailing slash (https://aitts.in/register).
+const CANONICAL_HOST = 'aitts.in';
+// Pages that also exist as a raw static file under their real .html name
+// (express.static below serves the whole frontend/ dir) get redirected to
+// the clean route already registered for them further down, so there is
+// only one live, indexable URL per page instead of two.
+const HTML_FILE_REDIRECTS = { '/adminvibacdonlineaiits.html':'/adminvibacdonlineaiits', '/ad856eyqafggg.html':'/ad856eyqafggg', '/index.html':'/' };
+app.use((req,res,next) => {
+  if (req.path.startsWith('/api/')) return next(); // never redirect API calls — breaks CORS/preflight expectations
+  const reqHost = (req.headers.host || '').toLowerCase();
+  const proto   = (req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim().toLowerCase();
+
+  let redirectTo = null;
+  if (process.env.NODE_ENV === 'production' && proto !== 'https') {
+    redirectTo = 'https://' + CANONICAL_HOST + req.originalUrl;
+  } else if (reqHost.startsWith('www.')) {
+    redirectTo = 'https://' + CANONICAL_HOST + req.originalUrl;
+  } else if (HTML_FILE_REDIRECTS[req.path]) {
+    redirectTo = HTML_FILE_REDIRECTS[req.path];
+  } else if (req.path.length > 1 && req.path.endsWith('/')) {
+    const q = req.originalUrl.indexOf('?');
+    redirectTo = req.path.slice(0,-1) + (q !== -1 ? req.originalUrl.slice(q) : '');
+  }
+  if (redirectTo) return res.redirect(301, redirectTo);
+  next();
+});
+// -----------------------------------------------------------------------
 app.use(cors({ origin:process.env.CLIENT_URL||true, credentials:true }));
 app.use(compression()); // gzip/br for JSON+HTML responses; images/already-compressed types are excluded by its default filter
 // Admin test create/edit payloads legitimately carry base64 question/option
@@ -145,6 +187,22 @@ app.get('*', async (req,res) => {
   };
   const fs = require('fs');
   let html = fs.readFileSync(path.join(__dirname,'frontend','index.html'),'utf8');
+  // This SPA serves the same index.html for every non-asset path, but
+  // frontend/index.html's canonical/og:url are hardcoded to the homepage —
+  // fine for arbitrary client-routed paths (they SHOULD canonicalize back to
+  // "/"), but wrong for /register and /login, which sitemap.xml lists as
+  // their own distinct, indexable URLs (see the /sitemap.xml route above).
+  // Rewrite the tags to match self-referencing whenever the path is one of
+  // those sitemap-listed routes, so the sitemap's claim and the page's own
+  // canonical tag always agree — the exact "mixed signal" Search Console
+  // was flagging.
+  const SITEMAP_ROUTES = ['/register','/login'];
+  if (SITEMAP_ROUTES.includes(req.path)) {
+    const selfUrl = 'https://aitts.in' + req.path; // no trailing slash, matches sitemap.xml + convention below
+    html = html
+      .replace('<link rel="canonical" href="https://aitts.in/">', `<link rel="canonical" href="${selfUrl}">`)
+      .replace('<meta property="og:url" content="https://aitts.in/">', `<meta property="og:url" content="${selfUrl}">`);
+  }
   // Inject Firebase as regular (non-module) scripts so they run before onload
   const fbCfg = JSON.stringify(firebaseConfig);
   // Replace placeholder with compat SDK scripts + inline config

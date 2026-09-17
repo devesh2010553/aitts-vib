@@ -39,8 +39,8 @@ const upload = multer({
 router.post('/import-pdf', upload.single('pdf'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No PDF uploaded' });
-    if (!process.env.GROQ_API_KEY) {
-      return res.status(503).json({ error: 'AI PDF import is not configured on this server (missing GROQ_API_KEY).' });
+    if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'AI PDF import is not configured on this server (set GROQ_API_KEY or GEMINI_API_KEY).' });
     }
 
     const hash = sha256(req.file.buffer);

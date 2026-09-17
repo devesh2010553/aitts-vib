@@ -1,43 +1,61 @@
 /**
  * AI provider abstraction (spec #34). Only this module knows how to talk to
  * a specific AI API — everything else in the import pipeline calls
- * analyzeBatch()/analyzeRegion() and works with plain JS objects, so a
- * different provider could be swapped in later without touching the queue,
- * routes, or schema-mapping code.
+ * analyzeBatch()/analyzeRegion() and works with plain JS objects.
  *
- * Uses Groq (console.groq.com — GroqCloud, the LPU inference company; NOT
- * the same as xAI's "Grok"). Groq's API is OpenAI-compatible (chat
- * completions with image_url content blocks), so this is nearly identical
- * in shape to the xAI version this replaced — only the endpoint, key env
- * var, and default model changed. Called directly via fetch. The API key is
- * read from process.env.GROQ_API_KEY and never leaves the server.
+ * Two providers are wired in, selected by AI_IMPORT_PROVIDER=groq|gemini
+ * (defaults to 'gemini' if GEMINI_API_KEY is set, else 'groq' — so setting
+ * GEMINI_API_KEY alone is enough to switch, no other config needed):
  *
- * Groq's free tier is real (no credit card required) but rate-limited —
- * expect to hit its per-minute request/token limit partway through a
- * multi-page PDF, not just on a single huge one; importQueue.js processes
- * one page at a time so a 15-page paper is 15 separate calls in a row.
- * callModel() below retries a 429/5xx with backoff (honoring Groq's
- * Retry-After header when present) instead of giving up on the first hit —
- * without that, a batch that got rate-limited was silently recorded as
- * "failed" and its questions were gone from the final draft for good,
- * which is why large imports used to stop after only 2-3 questions.
+ * - groq   (console.groq.com — GroqCloud, NOT xAI's "Grok"). OpenAI-compatible
+ *   chat completions. Free tier has no credit card requirement but a real
+ *   per-minute request/token ceiling, AND a hard per-model cap on images in
+ *   ONE request (qwen3.6-27b: 5, qwen3.8-27b: 3 — console.groq.com/docs/vision).
+ *   Exceeding the image cap 400s the whole request, losing every question on
+ *   that page — buildUserContent() below caps what it sends per provider.
  *
- * Vision models on Groq also cap how many images can go in ONE request —
- * qwen3.6-27b allows 5, qwen3.8-27b allows only 3 (console.groq.com/docs/vision).
- * A page with more diagrams than that used to make the WHOLE request 400,
- * losing every question on that page. buildUserContent() below caps what it
- * sends to the active model's limit and tells the model what got left out,
- * instead of oversending and losing the page.
+ * - gemini (aistudio.google.com — Google AI Studio). Free tier ("Gemini Flash")
+ *   is far more generous for this workload: no meaningful per-request image
+ *   cap (our batches send a handful of images at most, nowhere near Gemini's
+ *   actual ceiling), a much larger free RPM/TPM/RPD allowance, and native
+ *   structured JSON output (responseMimeType: 'application/json') instead of
+ *   hoping the model doesn't wrap its answer in a markdown fence. Get a key
+ *   at aistudio.google.com — no credit card required — and set it as
+ *   GEMINI_API_KEY. Model defaults to gemini-2.5-flash; override with
+ *   AI_IMPORT_MODEL if Google renames/deprecates it later.
+ *
+ * Both API keys are read straight from process.env and never leave the
+ * server. Neither provider is ever sent the raw PDF — only the already
+ * locally-extracted text/images for the specific pages in a batch (spec #9,
+ * #39) via pdfExtract.js.
+ *
+ * A page that gets rate-limited (429) or hits a transient 5xx used to be
+ * recorded as a permanently "failed" batch with zero retry — that's the
+ * single biggest reason large imports used to stop after only 2-3
+ * questions. callModel() below retries both providers with backoff before
+ * giving up on a page.
  */
 
-const MODEL = process.env.AI_IMPORT_MODEL || 'qwen/qwen3.8-27b';
-const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-// Confirm at console.groq.com/docs/vision before changing models — this is
-// the "images per request" ceiling Groq enforces per model, not a guess.
-const MAX_IMAGES_PER_REQUEST = { 'qwen/qwen3.6-27b': 5, 'qwen/qwen3.8-27b': 3 };
-const IMAGE_CAP = MAX_IMAGES_PER_REQUEST[MODEL] || 3; // unknown model: assume the tighter limit
+const PROVIDER = process.env.AI_IMPORT_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+
+const GROQ_MODEL_DEFAULT   = 'qwen/qwen3.8-27b';
+const GEMINI_MODEL_DEFAULT = 'gemini-2.5-flash';
+const MODEL = process.env.AI_IMPORT_MODEL || (PROVIDER === 'gemini' ? GEMINI_MODEL_DEFAULT : GROQ_MODEL_DEFAULT);
+
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const geminiApiUrl = () => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`;
+
+// Confirm at console.groq.com/docs/vision before changing Groq models — this
+// is the "images per request" ceiling Groq enforces per model, not a guess.
+// Gemini has no comparably tight limit for a batch this size (we send at
+// most one page image + a handful of embedded diagrams), so it's given a
+// generous cap that in practice never triggers the truncation path below.
+const GROQ_MAX_IMAGES_PER_REQUEST = { 'qwen/qwen3.6-27b': 5, 'qwen/qwen3.8-27b': 3 };
+const IMAGE_CAP = PROVIDER === 'gemini' ? 16 : (GROQ_MAX_IMAGES_PER_REQUEST[MODEL] || 3);
+
 const MAX_RETRIES = parseInt(process.env.AI_IMPORT_MAX_RETRIES) || 4;
 const RETRY_BASE_MS = parseInt(process.env.AI_IMPORT_RETRY_BASE_MS) || 3000;
+const MAX_OUTPUT_TOKENS = 16000; // Groq's documented ceiling for the qwen models is 16,384; Gemini 2.5 Flash allows far more — this is sized to Groq's tighter limit so a page's JSON doesn't get truncated mid-object on either provider
 
 const SYSTEM_PROMPT = `You are a document-reconstruction engine for a JEE/NEET-style test platform. You are given pages of an existing question paper (as images and/or extracted text) and must RECONSTRUCT it exactly as a structured question list — you are NOT writing new questions.
 
@@ -75,10 +93,14 @@ Respond with STRICT JSON ONLY (no markdown fences, no commentary) matching exact
 }
 If no answer key is present in the document, return "answerKey": [].`;
 
+/**
+ * Provider-agnostic content blocks: {type:'text', text} and
+ * {type:'image', mimeType, base64}. callGroq()/callGemini() below each
+ * translate this into their own wire format — Groq wants
+ * {type:'image_url', image_url:{url:'data:...'}}, Gemini wants
+ * {inline_data:{mime_type, data}}.
+ */
 function buildUserContent(batch) {
-  // OpenAI-compatible content-block format: {type:'text',text} and
-  // {type:'image_url', image_url:{url:'data:image/png;base64,<data>'}} —
-  // different shape from Anthropic's {type:'image', source:{...}}.
   const content = [];
   content.push({ type: 'text', text: `Pages ${batch.pageNumbers.join(', ')} of a ${batch.pageCount}-page document. Reconstruct every question found on these pages, following the rules above.` });
 
@@ -86,11 +108,11 @@ function buildUserContent(batch) {
   const relevantEmbedded = (batch.embeddedImages || []).filter(img => batch.pageNumbers.includes(img.page));
   const pagesWithEmbedded = new Set(relevantEmbedded.map(img => img.page));
 
-  // Groq enforces a hard per-model cap on images per request (IMAGE_CAP,
-  // see top of file) — exceeding it 400s the ENTIRE call, losing every
-  // question on the page(s) in this batch, not just the extra image. Page
-  // images take priority (without one, a scanned page can't be read at
-  // all); embedded diagrams fill whatever budget is left, in order.
+  // The active provider enforces some cap on images per request (IMAGE_CAP)
+  // — exceeding it either errors the whole call (Groq) or just wastes
+  // tokens (Gemini, generous cap so this rarely bites). Page images take
+  // priority (without one, a scanned page can't be read at all); embedded
+  // diagrams fill whatever budget is left, in order.
   let imagesUsed = 0;
   let omittedCount = 0;
   const imageBlocks = []; // collected separately so page-image and embedded-image budgeting share one counter
@@ -103,14 +125,13 @@ function buildUserContent(batch) {
     // actual reason to: no usable text layer (scanned page — vision is the
     // ONLY way to read it), or a diagram was extracted from this page and
     // the model needs to see its position/context to associate it with the
-    // right question. A normal text-only page gets text alone. This is what
-    // keeps a single request under Groq's free-tier TPM ceiling — sending
-    // every page's image unconditionally (the original design) blew well
-    // past an 8000 TPM limit on even a 2-page batch.
+    // right question. A normal text-only page gets text alone — this is
+    // what keeps a single request well under either provider's per-minute
+    // token ceiling.
     const needsImage = batch.forceImages || scannedSet.has(pageNum) || pagesWithEmbedded.has(pageNum);
     if (needsImage && batch.pageImages[pageNum] && imagesUsed < IMAGE_CAP) {
       imageBlocks.push({ type: 'text', text: `--- Page ${pageNum} rendered image ---` });
-      imageBlocks.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${batch.pageImages[pageNum]}`, detail: 'low' } });
+      imageBlocks.push({ type: 'image', mimeType: 'image/png', base64: batch.pageImages[pageNum] });
       imagesUsed++;
     } else if (needsImage) {
       omittedCount++;
@@ -120,13 +141,13 @@ function buildUserContent(batch) {
   for (const img of relevantEmbedded) {
     if (imagesUsed >= IMAGE_CAP) { omittedCount++; continue; }
     imageBlocks.push({ type: 'text', text: `--- Embedded image #${img.index} (from page ${img.page}) ---` });
-    imageBlocks.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${img.base64}`, detail: 'low' } });
+    imageBlocks.push({ type: 'image', mimeType: 'image/png', base64: img.base64 });
     imagesUsed++;
   }
 
   content.push(...imageBlocks);
   if (omittedCount > 0) {
-    content.push({ type: 'text', text: `Note: ${omittedCount} image(s) on this page were not attached (this model allows at most ${IMAGE_CAP} images per request). Follow the instruction above for any question/option that appears to need one of them — do not guess its content.` });
+    content.push({ type: 'text', text: `Note: ${omittedCount} image(s) on this page were not attached (this request allows at most ${IMAGE_CAP} images). Follow the instruction above for any question/option that appears to need one of them — do not guess its content.` });
   }
 
   return content;
@@ -135,57 +156,43 @@ function buildUserContent(batch) {
 function parseJsonResponse(text) {
   // Models occasionally wrap JSON in a markdown fence despite instructions —
   // strip that defensively rather than failing the whole batch over it.
-  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/,'');
+  // (Gemini's responseMimeType:'application/json' avoids this in practice,
+  // but the same parser runs for both providers so it's cheap insurance.)
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   return JSON.parse(cleaned);
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-async function callModel(content) {
-  if (!process.env.GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not set — configure it to enable AI PDF import.');
-  }
-  const body = JSON.stringify({
-    model: MODEL,
-    max_tokens: 16000, // Groq's documented ceiling for these models is 16,384 — this leaves headroom rather than truncating mid-JSON on a page with many/long questions
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content },
-    ],
-  });
-
+/** Shared retry/backoff loop — takes a `doRequest()` that performs ONE HTTP
+ *  attempt and returns { ok, status, retryAfterMs, getText() } so the two
+ *  providers' very different response shapes only need to be normalized
+ *  once each, not duplicated per attempt. */
+async function withRetries(providerLabel, doRequest) {
   let lastErr;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    let res;
+    let outcome;
     try {
-      res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
-        body,
-      });
+      outcome = await doRequest();
     } catch (networkErr) {
-      // fetch itself threw (DNS blip, connection reset) — treat exactly like
-      // a retryable server error rather than failing the whole page.
+      // fetch itself threw (DNS blip, connection reset) — retryable, same as a 5xx.
       lastErr = networkErr;
       if (attempt < MAX_RETRIES) { await sleep(RETRY_BASE_MS * Math.pow(2, attempt)); continue; }
       throw networkErr;
     }
 
-    if (res.ok) {
-      const data = await res.json();
-      const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      if (!text) throw new Error('AI provider returned no text content');
+    if (outcome.ok) {
+      const text = outcome.text;
+      if (!text) throw new Error(`${providerLabel} returned no text content`);
       try {
         return parseJsonResponse(text);
       } catch (parseErr) {
-        // Occasionally the model returns truncated/malformed JSON (more
-        // likely right at the old 8000-token ceiling, less likely now, but
-        // still possible on an unusually dense page) — that used to fail
-        // the whole page instantly. Worth one retry: it's non-deterministic
-        // output, a second attempt at the same page often comes back clean.
-        lastErr = new Error(`AI provider returned invalid JSON: ${parseErr.message}`);
+        // Occasionally the model returns truncated/malformed JSON — worth
+        // one retry rather than failing the whole page instantly; it's
+        // non-deterministic output, a second attempt often comes back clean.
+        lastErr = new Error(`${providerLabel} returned invalid JSON: ${parseErr.message}`);
         if (attempt === MAX_RETRIES) throw lastErr;
-        console.warn(`[AI-IMPORT] Malformed JSON from model, retrying (attempt ${attempt+1}/${MAX_RETRIES})`);
+        console.warn(`[AI-IMPORT] Malformed JSON from ${providerLabel}, retrying (attempt ${attempt + 1}/${MAX_RETRIES})`);
         await sleep(RETRY_BASE_MS);
         continue;
       }
@@ -195,17 +202,98 @@ async function callModel(content) {
     // that's simply the Nth request this minute is not a bad page, and
     // giving up on it here is exactly what used to silently drop most of a
     // multi-page document down to just its first couple of pages.
-    const retryable = res.status === 429 || res.status >= 500;
-    const body_ = await res.text().catch(() => '');
-    lastErr = new Error(`AI provider error ${res.status}: ${body_.slice(0, 300)}`);
+    const retryable = outcome.status === 429 || outcome.status >= 500;
+    lastErr = new Error(`${providerLabel} error ${outcome.status}: ${(outcome.text || '').slice(0, 300)}`);
     if (!retryable || attempt === MAX_RETRIES) throw lastErr;
 
-    const retryAfterHeader = res.headers.get('retry-after');
-    const waitMs = retryAfterHeader ? Math.max(1000, parseFloat(retryAfterHeader) * 1000) : RETRY_BASE_MS * Math.pow(2, attempt);
-    console.warn(`[AI-IMPORT] ${res.status} from Groq, retrying in ${Math.round(waitMs/1000)}s (attempt ${attempt+1}/${MAX_RETRIES})`);
+    const waitMs = outcome.retryAfterMs || RETRY_BASE_MS * Math.pow(2, attempt);
+    console.warn(`[AI-IMPORT] ${outcome.status} from ${providerLabel}, retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
     await sleep(waitMs);
   }
   throw lastErr;
+}
+
+async function callGroq(content) {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error('GROQ_API_KEY is not set — configure it, or switch to Gemini (GEMINI_API_KEY), to enable AI PDF import.');
+  }
+  const groqContent = content.map(b =>
+    b.type === 'image'
+      ? { type: 'image_url', image_url: { url: `data:${b.mimeType};base64,${b.base64}`, detail: 'low' } }
+      : { type: 'text', text: b.text }
+  );
+  const body = JSON.stringify({
+    model: MODEL,
+    max_tokens: MAX_OUTPUT_TOKENS,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: groqContent },
+    ],
+  });
+
+  return withRetries('Groq', async () => {
+    const res = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
+      body,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      return { ok: true, text };
+    }
+    const text = await res.text().catch(() => '');
+    const retryAfterHeader = res.headers.get('retry-after');
+    const retryAfterMs = retryAfterHeader ? Math.max(1000, parseFloat(retryAfterHeader) * 1000) : null;
+    return { ok: false, status: res.status, text, retryAfterMs };
+  });
+}
+
+async function callGemini(content) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not set — get a free key at aistudio.google.com to enable AI PDF import.');
+  }
+  const parts = content.map(b =>
+    b.type === 'image'
+      ? { inline_data: { mime_type: b.mimeType, data: b.base64 } }
+      : { text: b.text }
+  );
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts }],
+    generationConfig: {
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      responseMimeType: 'application/json', // native structured output — no markdown-fence guessing needed
+    },
+  });
+
+  return withRetries('Gemini', async () => {
+    const res = await fetch(geminiApiUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      body,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const cand = data.candidates && data.candidates[0];
+      // A response can come back with no parts if it was cut off by a
+      // safety filter or hit maxOutputTokens before any text — surface
+      // finishReason in that case rather than a bare "no text content".
+      const text = cand && cand.content && cand.content.parts && cand.content.parts.map(p => p.text || '').join('');
+      if (!text && cand && cand.finishReason && cand.finishReason !== 'STOP') {
+        return { ok: false, status: 502, text: `Gemini stopped early: ${cand.finishReason}` };
+      }
+      return { ok: true, text };
+    }
+    const text = await res.text().catch(() => '');
+    // Gemini doesn't send Retry-After; RESOURCE_EXHAUSTED (429) backs off
+    // on the standard exponential schedule instead.
+    return { ok: false, status: res.status, text };
+  });
+}
+
+async function callModel(content) {
+  return PROVIDER === 'gemini' ? callGemini(content) : callGroq(content);
 }
 
 /**
@@ -232,4 +320,4 @@ async function analyzeRegion(batch) {
   return analyzeBatch(batch);
 }
 
-module.exports = { analyzeBatch, analyzeRegion, MODEL, IMAGE_CAP };
+module.exports = { analyzeBatch, analyzeRegion, PROVIDER, MODEL, IMAGE_CAP };

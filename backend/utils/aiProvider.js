@@ -22,7 +22,7 @@
  * console.groq.com/docs/vision before deploying, model availability changes.
  */
 
-const MODEL = process.env.AI_IMPORT_MODEL || 'qwen/qwen3.6-27b';
+const MODEL = process.env.AI_IMPORT_MODEL || 'qwen/qwen3.8-27b';
 const API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const SYSTEM_PROMPT = `You are a document-reconstruction engine for a JEE/NEET-style test platform. You are given pages of an existing question paper (as images and/or extracted text) and must RECONSTRUCT it exactly as a structured question list — you are NOT writing new questions.

@@ -40,7 +40,17 @@ const PROVIDER = process.env.AI_IMPORT_PROVIDER || (process.env.GEMINI_API_KEY ?
 
 const GROQ_MODEL_DEFAULT   = 'qwen/qwen3.8-27b';
 const GEMINI_MODEL_DEFAULT = 'gemini-2.5-flash';
-const MODEL = process.env.AI_IMPORT_MODEL || (PROVIDER === 'gemini' ? GEMINI_MODEL_DEFAULT : GROQ_MODEL_DEFAULT);
+// A common mix-up: AI_IMPORT_MODEL selects the MODEL, AI_IMPORT_PROVIDER
+// selects the PROVIDER. Setting AI_IMPORT_MODEL=gemini (or =groq) sends that
+// literal string to the API as a model name, which 404s with a confusing
+// "models/gemini is not found" error. Catch it here and fall back to the
+// correct default instead of letting every single page fail on it.
+let rawModelEnv = (process.env.AI_IMPORT_MODEL || '').trim();
+if (rawModelEnv && ['gemini', 'groq'].includes(rawModelEnv.toLowerCase())) {
+  console.warn(`[AI-IMPORT] AI_IMPORT_MODEL="${rawModelEnv}" looks like a provider name, not a model name — did you mean AI_IMPORT_PROVIDER? Ignoring it and using the default model for "${PROVIDER}" instead.`);
+  rawModelEnv = '';
+}
+const MODEL = rawModelEnv || (PROVIDER === 'gemini' ? GEMINI_MODEL_DEFAULT : GROQ_MODEL_DEFAULT);
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const geminiApiUrl = () => `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent`;
@@ -286,6 +296,9 @@ async function callGemini(content) {
       return { ok: true, text };
     }
     const text = await res.text().catch(() => '');
+    if (res.status === 404) {
+      return { ok: false, status: 404, text: `Gemini model "${MODEL}" was not found (check AI_IMPORT_MODEL is a real model id like "gemini-2.5-flash", not a provider name — see AI_IMPORT_PROVIDER for that): ${text}` };
+    }
     // Gemini doesn't send Retry-After; RESOURCE_EXHAUSTED (429) backs off
     // on the standard exponential schedule instead.
     return { ok: false, status: res.status, text };

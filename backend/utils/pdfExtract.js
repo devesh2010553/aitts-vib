@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const sharp = require('sharp');
 const { PDFParse } = require('pdf-parse');
 
 /**
@@ -75,4 +76,45 @@ function sha256(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
-module.exports = { extractPdf, sha256 };
+/**
+ * Builds the exact same shape extractPdf() returns, but from a set of
+ * ordinary image files (JPG/PNG/WEBP/etc — a phone photo of each page of a
+ * question paper, in order) instead of a PDF. This is what lets the AI PDF
+ * import pipeline accept "every format like jpg/jpeg/png" — importQueue.js
+ * and aiProvider.js downstream never need to know the source wasn't a PDF;
+ * they just see pageCount pages, each with a rendered image and no text
+ * layer.
+ *
+ * Every image is treated as fully "scanned" (no extractable text layer) —
+ * there IS no OCR text to pull out of a phone photo the way pdf-parse pulls
+ * text out of a real PDF's text layer, so vision is the only way to read
+ * it, same as a scanned PDF page. sharp's .rotate() with no arguments reads
+ * the image's EXIF orientation tag and auto-corrects it — important for
+ * phone camera photos, which are very often stored sideways/upside-down
+ * relative to how they look on screen.
+ */
+async function extractFromImages(buffers) {
+  const pageCount = buffers.length;
+  const textByPage = new Array(pageCount).fill('');
+  const pageImages = {};
+  const scannedPages = [];
+
+  for (let i = 0; i < pageCount; i++) {
+    const pageNum = i + 1;
+    try {
+      const png = await sharp(buffers[i]).rotate().png().toBuffer();
+      pageImages[pageNum] = png.toString('base64');
+    } catch (e) {
+      // A single corrupt/unsupported image shouldn't fail the whole job —
+      // flag it as scanned-with-no-image so the AI batch for that page
+      // fails gracefully (per-page failure handling already exists in
+      // importQueue.js) instead of throwing here and losing every page.
+      console.error(`[AI-IMPORT] Could not decode image for page ${pageNum}:`, e.message);
+    }
+    scannedPages.push(pageNum);
+  }
+
+  return { pageCount, textByPage, pageImages, embeddedImages: [], scannedPages, tableCount: 0 };
+}
+
+module.exports = { extractPdf, extractFromImages, sha256 };

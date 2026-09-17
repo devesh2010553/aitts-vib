@@ -69,6 +69,11 @@ const MAX_RETRIES = parseInt(process.env.AI_IMPORT_MAX_RETRIES) || 4;
 const RETRY_BASE_MS = parseInt(process.env.AI_IMPORT_RETRY_BASE_MS) || 3000;
 const MAX_OUTPUT_TOKENS = 16000; // Groq's documented ceiling for the qwen models is 16,384; Gemini 2.5 Flash allows far more — this is sized to Groq's tighter limit so a page's JSON doesn't get truncated mid-object on either provider
 
+const BOX_FORMAT_INSTRUCTION = PROVIDER === 'gemini'
+  ? 'a bounding box as integers [ymin,xmin,ymax,xmax] normalized to a 0-1000 scale — this is the exact box convention Gemini is trained on for object detection; do NOT convert it to a 0-1 float range and do NOT reorder it to x-first, either of those will make the crop wrong'
+  : 'an approximate bounding box [x0,y0,x1,y1] in 0–1 normalized coordinates (x before y, floats not integers)';
+const BOX_SCHEMA_EXAMPLE = PROVIDER === 'gemini' ? '[ymin,xmin,ymax,xmax]' : '[x0,y0,x1,y1]';
+
 const SYSTEM_PROMPT = `You are a document-reconstruction engine for a JEE/NEET-style test platform. You are given pages of an existing question paper (as images and/or extracted text) and must RECONSTRUCT it exactly as a structured question list — you are NOT writing new questions.
 
 Hard rules:
@@ -78,7 +83,7 @@ Hard rules:
 - Exclude repeated page headers/footers (e.g. running titles, "Page X of Y") from questionText — but do not remove legitimate question content just because it's near a page edge.
 - A question that continues across a page break is still ONE question — merge it, do not split it.
 - Use visual position (not just text order) to determine reading order on multi-column pages.
-- If a question has an associated diagram/figure/table/graph and it was extracted as one of the numbered "Embedded image #N" assets provided to you, reference it by that number. If the diagram is NOT among the embedded images (common for vector-drawn diagrams, e.g. circuit/geometry figures made of lines rather than a raster image) but IS visible in a page image you were given, instead return an approximate bounding box [x0,y0,x1,y1] in 0–1 normalized coordinates (relative to that full page image) so it can be cropped out — do not attempt to redraw or describe it as text.
+- If a question has an associated diagram/figure/table/graph and it was extracted as one of the numbered "Embedded image #N" assets provided to you, reference it by that number. If the diagram is NOT among the embedded images (common for vector-drawn diagrams, e.g. circuit/geometry figures made of lines rather than a raster image) but IS visible in a page image you were given, instead return ${BOX_FORMAT_INSTRUCTION} so it can be cropped out — do not attempt to redraw or describe it as text. Make sure the box fully encloses the whole diagram including its edges/labels, not just its center — a box that's too tight will crop off part of it.
 - The SAME asset mechanism applies to individual OPTIONS, not just the question as a whole — this is common in "which of the following figures..." style questions. If a specific option (not the question stem) has its own diagram, put that option's asset on the option object itself (see schema below: each option may carry its own "asset"), not on the question's top-level "assets" array.
 - Some pages may include a note like "N image(s) on this page were not attached (limit reached)". If a question or option you can see in the page image clearly has a diagram that is missing from the embedded-image numbers you were given (because it was left out under that limit), do NOT invent a bounding box guess for it — instead leave that asset empty, set confidence to "review", and add a flag such as "diagram present but not attached — reprocess this page alone to capture it".
 - If you cannot reliably determine something (option count, boundary, whether a diagram belongs to this question, OCR of unclear text), do not guess — set confidence to "review" or "low" and add a short flag string explaining what's uncertain.
@@ -93,10 +98,10 @@ Respond with STRICT JSON ONLY (no markdown fences, no commentary) matching exact
       "questionText": "<string, header/footer stripped>",
       "questionType": "mcq" | "multi" | "numerical" | "assertion-reason" | "true-false" | "match" | "subjective" | "other",
       "isMultiChoice": <bool>,
-      "options": [ { "label": "<A/B/1/i as printed>", "text": "<string>", "asset": null | { "type": "embedded", "imageIndex": <int> } | { "type": "region", "page": <int>, "box": [x0,y0,x1,y1] } } ],
+      "options": [ { "label": "<A/B/1/i as printed>", "text": "<string>", "asset": null | { "type": "embedded", "imageIndex": <int> } | { "type": "region", "page": <int>, "box": ${BOX_SCHEMA_EXAMPLE} } } ],
       "marks": <number or null>,
       "negativeMarks": <number or null>,
-      "assets": [ { "type": "embedded", "imageIndex": <int> } | { "type": "region", "page": <int>, "box": [x0,y0,x1,y1] } ],
+      "assets": [ { "type": "embedded", "imageIndex": <int> } | { "type": "region", "page": <int>, "box": ${BOX_SCHEMA_EXAMPLE} } ],
       "confidence": "high" | "review" | "low",
       "flags": ["<short reason string>", ...]
     }
@@ -165,6 +170,44 @@ function buildUserContent(batch) {
   return content;
 }
 
+/**
+ * Converts a region asset's box — in whichever coordinate convention the
+ * active provider was told to use (BOX_FORMAT_INSTRUCTION above) — into one
+ * canonical [x0,y0,x1,y1] range in 0-1, then pads it outward a little.
+ *
+ * Gemini is specifically trained on [ymin,xmin,ymax,xmax] normalized to
+ * 0-1000 for object detection (ai.google.dev's bounding-box docs). Earlier
+ * this prompt asked EVERY provider for [x0,y0,x1,y1]/0-1 regardless — fine
+ * for Groq, but fighting Gemini's own training, which produced boxes that
+ * routinely missed roughly half the diagram. Now each provider is asked
+ * for its native format and this is the one place that un-normalizes back
+ * to a single shape for cropRegion() (importQueue.js) to consume.
+ *
+ * The padding on top is a second, independent safety margin — every vision
+ * model's boxes are approximate, not pixel-exact, so padding outward trades
+ * a sliver of extra whitespace for never clipping the actual diagram, which
+ * is the much safer failure mode here.
+ */
+function normalizeAndPadBox(box, pad = 0.08) {
+  if (!Array.isArray(box) || box.length !== 4 || box.some(n => typeof n !== 'number' || Number.isNaN(n))) return null;
+
+  let x0, y0, x1, y1;
+  if (PROVIDER === 'gemini') {
+    const [ymin, xmin, ymax, xmax] = box; // Gemini's native order/scale
+    x0 = xmin / 1000; y0 = ymin / 1000; x1 = xmax / 1000; y1 = ymax / 1000;
+  } else {
+    [x0, y0, x1, y1] = box;
+  }
+  if (x1 < x0) [x0, x1] = [x1, x0]; // defensive — occasionally still swapped regardless of provider
+  if (y1 < y0) [y0, y1] = [y1, y0];
+
+  const w = x1 - x0, h = y1 - y0;
+  x0 = Math.max(0, x0 - w * pad); y0 = Math.max(0, y0 - h * pad);
+  x1 = Math.min(1, x1 + w * pad); y1 = Math.min(1, y1 + h * pad);
+  if (x1 <= x0 || y1 <= y0) return null;
+  return [x0, y0, x1, y1];
+}
+
 function parseJsonResponse(text) {
   // Models occasionally wrap JSON in a markdown fence despite instructions —
   // strip that defensively rather than failing the whole batch over it.
@@ -187,6 +230,12 @@ async function withRetries(providerLabel, doRequest) {
     try {
       outcome = await doRequest();
     } catch (networkErr) {
+      // An intentional cancel (importQueue.js aborts the in-flight request
+      // when a teacher hits "Cancel") surfaces here as an AbortError — that
+      // is NOT a transient failure to retry through, it's a request to
+      // stop; propagate it immediately so the job can be marked cancelled
+      // rather than burning through the backoff schedule first.
+      if (networkErr.name === 'AbortError') throw networkErr;
       // fetch itself threw (DNS blip, connection reset) — retryable, same as a 5xx.
       lastErr = networkErr;
       if (attempt < MAX_RETRIES) { await sleep(RETRY_BASE_MS * Math.pow(2, attempt)); continue; }
@@ -225,7 +274,7 @@ async function withRetries(providerLabel, doRequest) {
   throw lastErr;
 }
 
-async function callGroq(content) {
+async function callGroq(content, signal) {
   if (!process.env.GROQ_API_KEY) {
     throw new Error('GROQ_API_KEY is not set — configure it, or switch to Gemini (GEMINI_API_KEY), to enable AI PDF import.');
   }
@@ -248,6 +297,7 @@ async function callGroq(content) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
       body,
+      signal,
     });
     if (res.ok) {
       const data = await res.json();
@@ -261,7 +311,7 @@ async function callGroq(content) {
   });
 }
 
-async function callGemini(content) {
+async function callGemini(content, signal) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY is not set — get a free key at aistudio.google.com to enable AI PDF import.');
   }
@@ -284,6 +334,7 @@ async function callGemini(content) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
       body,
+      signal,
     });
     if (res.ok) {
       const data = await res.json();
@@ -307,8 +358,8 @@ async function callGemini(content) {
   });
 }
 
-async function callModel(content) {
-  return PROVIDER === 'gemini' ? callGemini(content) : callGroq(content);
+async function callModel(content, signal) {
+  return PROVIDER === 'gemini' ? callGemini(content, signal) : callGroq(content, signal);
 }
 
 /**
@@ -316,10 +367,14 @@ async function callModel(content) {
  * batching strategy) and return { questions, answerKey } per the schema
  * above. Never sends the raw PDF — only the already-locally-extracted
  * text/images for these specific pages (spec #9, #39).
+ *
+ * batch.signal (optional AbortSignal) lets importQueue.js cancel an
+ * in-flight request immediately — e.g. the "Cancel" button on the review
+ * screen — instead of waiting for the current page to finish.
  */
 async function analyzeBatch(batch) {
   const content = buildUserContent(batch);
-  const result = await callModel(content);
+  const result = await callModel(content, batch.signal);
   return {
     questions: Array.isArray(result.questions) ? result.questions : [],
     answerKey: Array.isArray(result.answerKey) ? result.answerKey : [],
@@ -335,4 +390,4 @@ async function analyzeRegion(batch) {
   return analyzeBatch(batch);
 }
 
-module.exports = { analyzeBatch, analyzeRegion, PROVIDER, MODEL, IMAGE_CAP };
+module.exports = { analyzeBatch, analyzeRegion, normalizeAndPadBox, PROVIDER, MODEL, IMAGE_CAP };

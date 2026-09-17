@@ -144,6 +144,42 @@ async function fetchRawBuffer(url, publicId) {
   return Buffer.from(await res.arrayBuffer());
 }
 
+/**
+ * Uploads a raw image Buffer (e.g. a phone photo of a question-paper page)
+ * as a real Cloudinary `image` resource — distinct from uploadRawBuffer
+ * (which uses resource_type:'raw' for non-image files like the original
+ * PDF). Image delivery isn't subject to the PDF/ZIP delivery restriction
+ * that made uploadRawBuffer/fetchRawBuffer need a signed-URL fallback, so
+ * this stays plain. Returns null (caller falls back to base64) if
+ * Cloudinary isn't configured.
+ */
+async function uploadSourceImageBuffer(buffer, fileName, folder) {
+  if (!configured) return null;
+  return new Promise((resolve) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder: folder || 'aiits/imports/source-images',
+        resource_type: 'image',
+        public_id: (fileName || 'page').replace(/[^\w.\-]/g, '_'),
+        use_filename: true,
+        unique_filename: true,
+      },
+      (err, result) => {
+        if (err) { console.error('[CLOUDINARY] Source image upload failed, falling back to base64:', err.message); return resolve(null); }
+        resolve({ url: result.secure_url, publicId: result.public_id });
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
+/** Pulls a previously uploaded source-image resource back down as a Buffer. */
+async function fetchImageBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Could not fetch stored image (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
 /** Uploads a raw Buffer (e.g. from multer memoryStorage) — used for ad images. */
 function uploadBuffer(buffer, folder) {
   return new Promise((resolve, reject) => {
@@ -178,6 +214,8 @@ module.exports = {
   uploadRawBuffer,
   fetchRawBuffer,
   signedRawUrl,
+  uploadSourceImageBuffer,
+  fetchImageBuffer,
   uploadBuffer,
   uploadTestImages,
 };

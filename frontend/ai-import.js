@@ -10,9 +10,9 @@
     return '' +
       '<div class="admin-card">' +
         '<h3><i class="fas fa-file-pdf"></i> AI PDF Test Import</h3>' +
-        '<p style="color:var(--text-muted);font-size:13px;margin-bottom:14px">Upload an existing question-paper PDF. It gets reconstructed as a draft test — nothing is published automatically, and nothing new is invented; the PDF is the source of truth.</p>' +
+        '<p style="color:var(--text-muted);font-size:13px;margin-bottom:14px">Upload an existing question-paper PDF, or photos of each page (jpg/jpeg/png/webp/etc — select all pages at once, in order). It gets reconstructed as a draft test — nothing is published automatically, and nothing new is invented; the source file is the source of truth.</p>' +
         '<div id="ai-import-upload-box">' +
-          '<input type="file" id="ai-pdf-file" accept="application/pdf" style="margin-bottom:10px;display:block">' +
+          '<input type="file" id="ai-pdf-file" accept="application/pdf,image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff" multiple style="margin-bottom:10px;display:block">' +
           '<button class="btn btn-gold" onclick="AiImport.upload()"><i class="fas fa-upload"></i> Upload &amp; Analyze</button>' +
         '</div>' +
         '<div id="ai-import-progress" style="display:none;margin-top:18px"></div>' +
@@ -40,14 +40,18 @@
 
   function upload(force) {
     var input = document.getElementById('ai-pdf-file');
-    if (!input || !input.files || !input.files[0]) { toast('Choose a PDF first', 'error'); return; }
-    if (!input.files[0].type || input.files[0].type !== 'application/pdf') { toast('Please choose a .pdf file', 'error'); return; }
+    var files = input && input.files ? Array.prototype.slice.call(input.files) : [];
+    if (!files.length) { toast('Choose a PDF or image file(s) first', 'error'); return; }
+
+    var isPdf = files.length === 1 && files[0].type === 'application/pdf';
+    var isImages = files.every(function (f) { return f.type && f.type.indexOf('image/') === 0; });
+    if (!isPdf && !isImages) { toast('Choose either one PDF, or one-or-more image files — not a mix of both', 'error'); return; }
 
     var fd = new FormData();
-    fd.append('pdf', input.files[0]);
+    files.forEach(function (f) { fd.append('files', f); });
 
     document.getElementById('ai-import-review').style.display = 'none';
-    setProgress(stageRow('Uploading PDF...', false));
+    setProgress(stageRow('Uploading ' + (isPdf ? 'PDF' : files.length + ' image(s)') + '...', false));
 
     // Deliberately NOT using the shared api() helper here — it forces
     // Content-Type: application/json, which breaks a multipart FormData
@@ -60,7 +64,7 @@
       if (r.status === 409 && !force) {
         setProgress(
           '<div style="padding:12px;border:1px solid #d69e2e;border-radius:8px;background:#fffaf0">' +
-          '<i class="fas fa-exclamation-triangle" style="color:#d69e2e"></i> This PDF appears to have already been imported (' + esc(r.data.existingFileName || '') + ', ' + esc(r.data.existingStatus || '') + ').' +
+          '<i class="fas fa-exclamation-triangle" style="color:#d69e2e"></i> This file appears to have already been imported (' + esc(r.data.existingFileName || '') + ', ' + esc(r.data.existingStatus || '') + ').' +
           (r.data.existingTestId ? ' <button class="btn btn-outline btn-sm" onclick="editTest(\'' + r.data.existingTestId + '\')">Open that draft</button>' : '') +
           ' <button class="btn btn-outline btn-sm" onclick="AiImport.upload(true)">Import anyway</button>' +
           '</div>'
@@ -88,14 +92,22 @@
         setProgress('<p style="color:#c53030"><i class="fas fa-times-circle"></i> Import failed: ' + esc(job.error || 'Unknown error') + '</p>');
         return;
       }
+      if (job.status === 'cancelled') {
+        clearInterval(pollTimer); pollTimer = null;
+        setProgress('<p style="color:var(--text-muted)"><i class="fas fa-ban"></i> Import cancelled. ' + (job.questionsDetected ? esc(job.questionsDetected) + ' question(s) had already been detected — ' : '') + '<button class="btn btn-outline btn-sm" onclick="AiImport.loadReview(\'' + jobId + '\')">Review what was found so far</button></p>');
+        return;
+      }
       var lines = [
-        stageRow('Uploading PDF', true),
-        stageRow('Reading PDF (' + (job.pageCount || '...') + ' pages)', job.pageCount > 0),
+        stageRow('Uploading', true),
+        stageRow('Reading source (' + (job.pageCount || '...') + ' pages)', job.pageCount > 0),
         stageRow('Detecting questions... ' + (job.questionsDetected || 0) + (job.totalQuestionsGuess ? ' / ~' + job.totalQuestionsGuess + ' est.' : ''), job.status === 'done'),
       ];
       if (job.imagesDetected) lines.push(stageRow(job.imagesDetected + ' image(s) detected', true));
       if (job.tablesDetected) lines.push(stageRow(job.tablesDetected + ' table(s) detected', true));
       lines.push('<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">' + esc(job.stage || '') + '</div>');
+      if (job.status !== 'done') {
+        lines.push('<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="AiImport.cancel(\'' + jobId + '\')"><i class="fas fa-stop-circle"></i> Cancel import</button>');
+      }
       setProgress(lines.join(''));
 
       if (job.status === 'done') {
@@ -103,6 +115,13 @@
         loadReview(jobId);
       }
     }).catch(function () { /* transient poll failure — try again next tick */ });
+  }
+
+  function cancel(jobId) {
+    setProgress(stageRow('Cancelling...', false));
+    api('/api/admin/ai/import-status/' + jobId + '/cancel', { method: 'POST' })
+      .then(function () { /* the next poll tick picks up status:'cancelled' and stops the timer itself */ })
+      .catch(function (err) { toast(err.message, 'error'); });
   }
 
   function confidenceBadge(c) {
@@ -149,7 +168,7 @@
       });
       html += '</div>';
       html += '<button class="btn btn-gold" onclick="AiImport.createDraft(\'' + jobId + '\')"><i class="fas fa-check"></i> Create Draft Test &amp; Open Editor</button> ';
-      html += '<a href="/api/admin/ai/import/' + jobId + '/pdf" target="_blank" class="btn btn-outline btn-sm"><i class="fas fa-file-pdf"></i> View Original PDF</a>';
+      html += '<a href="/api/admin/ai/import/' + jobId + '/pdf" target="_blank" class="btn btn-outline btn-sm"><i class="fas fa-file-pdf"></i> View Original</a>';
       box.innerHTML = html;
     }).catch(function (err) { toast(err.message, 'error'); });
   }
@@ -170,5 +189,5 @@
       .catch(function (err) { toast(err.message, 'error'); });
   }
 
-  window.AiImport = { init: init, upload: upload, reprocess: reprocess, createDraft: createDraft };
+  window.AiImport = { init: init, upload: upload, cancel: cancel, reprocess: reprocess, createDraft: createDraft, loadReview: loadReview };
 })();

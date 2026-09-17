@@ -14,65 +14,106 @@ const crypto  = require('crypto');
 const PdfImportJob = require('../models/PdfImportJob');
 const Test = require('../dynamo/testModel'); // was: const Test = require('../models/Test') — Test now lives on DynamoDB, not MongoDB
 const { authenticateAdmin } = require('../middleware/auth');
-const { extractPdf, sha256 } = require('../utils/pdfExtract');
+const { sha256 } = require('../utils/pdfExtract');
 const aiProvider = require('../utils/aiProvider');
-const { enqueueImportJob, mapJobQuestionsToTestQuestions, getJobPdfBuffer } = require('../utils/importQueue');
-const { uploadRawBuffer, uploadImageBase64, uploadTestImages, signedRawUrl } = require('../utils/cloudinary');
+const { enqueueImportJob, cancelImportJob, mapJobQuestionsToTestQuestions, getJobExtraction } = require('../utils/importQueue');
+const { uploadRawBuffer, uploadImageBase64, uploadSourceImageBuffer, uploadTestImages, signedRawUrl } = require('../utils/cloudinary');
 
 router.use(authenticateAdmin); // spec #38 — only authenticated admins/teachers, never students
 
+// Accepts EITHER a single PDF, or one-or-more ordinary image files (e.g.
+// phone photos of each page of a question paper, in order) — importQueue.js
+// treats both the same way past the initial extraction step
+// (pdfExtract.js's extractPdf() vs extractFromImages() produce the same
+// shape). Mixing a PDF with images in one upload isn't supported — a PDF is
+// always exactly one file, so more than one file present means "these are
+// all page photos."
+const IMAGE_MIMETYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/tiff']);
 // PDFs are naturally larger than the admin image-upload limit (8MB, see
-// admin.js) but still bounded — 25MB comfortably covers a multi-page scanned
-// question paper while keeping the resulting base64-in-Mongo job document
-// (see PdfImportJob.js) well under MongoDB's 16MB document cap once
-// extracted assets are added on top.
+// admin.js) but still bounded — 25MB per file comfortably covers a
+// multi-page scanned question paper or a high-res phone photo while
+// keeping the resulting base64-in-Mongo fallback (see PdfImportJob.js)
+// well under MongoDB's 16MB document cap once extracted assets are added.
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: 25 * 1024 * 1024, files: 30 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype !== 'application/pdf') return cb(new Error('Only PDF files are accepted'));
+    if (file.mimetype !== 'application/pdf' && !IMAGE_MIMETYPES.has(file.mimetype)) {
+      return cb(new Error(`Unsupported file type: ${file.mimetype}. Upload a PDF or image files (jpg/jpeg/png/webp/gif/bmp/tiff).`));
+    }
     cb(null, true);
   },
 });
 
 // ── 1. Upload — creates a job, kicks off async processing, returns immediately (spec #36) ──
-router.post('/import-pdf', upload.single('pdf'), async (req, res) => {
+router.post('/import-pdf', upload.array('files', 30), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No PDF uploaded' });
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ error: 'No file uploaded' });
     if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
       return res.status(503).json({ error: 'AI PDF import is not configured on this server (set GROQ_API_KEY or GEMINI_API_KEY).' });
     }
 
-    const hash = sha256(req.file.buffer);
+    const isPdf = files.length === 1 && files[0].mimetype === 'application/pdf';
+    const isImages = files.every(f => IMAGE_MIMETYPES.has(f.mimetype));
+    if (!isPdf && !isImages) {
+      return res.status(400).json({ error: 'Upload either a single PDF, or one-or-more image files (jpg/jpeg/png/webp/gif/bmp/tiff) — not a mix of both.' });
+    }
+
+    // Hash across all files together so re-uploading the exact same set of
+    // photos (or the same PDF) is still caught by the duplicate-import check.
+    const hash = sha256(Buffer.concat(files.map(f => f.buffer)));
     const existing = await PdfImportJob.findOne({ fileHash: hash }).select('_id fileName status createdTestId createdAt').lean();
     if (existing && req.query.force !== 'true') {
       // spec #44 — warn, don't block; teacher can force a re-import if intentional.
       return res.status(409).json({
-        error: 'This PDF appears to have already been imported.',
+        error: 'This file appears to have already been imported.',
         existingJobId: existing._id, existingFileName: existing.fileName,
         existingStatus: existing.status, existingTestId: existing.createdTestId, importedAt: existing.createdAt,
       });
     }
 
-    // Store the original in Cloudinary (raw resource) and keep only the URL in
-    // Mongo. uploadRawBuffer returns null when Cloudinary isn't configured, in
-    // which case we fall back to the old inline-base64 path rather than
-    // rejecting the upload.
-    const stored = await uploadRawBuffer(req.file.buffer, req.file.originalname, 'aiits/imports/pdf');
+    let job;
+    if (isPdf) {
+      const file = files[0];
+      // Store the original in Cloudinary (raw resource) and keep only the URL
+      // in Mongo. uploadRawBuffer returns null when Cloudinary isn't
+      // configured, in which case we fall back to the old inline-base64 path.
+      const stored = await uploadRawBuffer(file.buffer, file.originalname, 'aiits/imports/pdf');
+      job = await PdfImportJob.create({
+        status: 'queued', stage: 'Queued', sourceType: 'pdf',
+        fileName: file.originalname, fileHash: hash,
+        pdfUrl: (stored && stored.url) || '',
+        pdfPublicId: (stored && stored.publicId) || '',
+        pdfBase64: stored ? '' : file.buffer.toString('base64'),
+        createdBy: (req.admin && req.admin.email) || '',
+      });
+    } else {
+      // Upload every photo to Cloudinary in page order; fall back to
+      // per-image base64 in Mongo for any that fails or if Cloudinary isn't
+      // configured at all — same convention as the PDF path.
+      const sourceImages = [];
+      for (const file of files) {
+        const stored = await uploadSourceImageBuffer(file.buffer, file.originalname, 'aiits/imports/source-images');
+        sourceImages.push({
+          url: (stored && stored.url) || '',
+          publicId: (stored && stored.publicId) || '',
+          base64: stored ? '' : file.buffer.toString('base64'),
+        });
+      }
+      job = await PdfImportJob.create({
+        status: 'queued', stage: 'Queued', sourceType: 'images',
+        fileName: files.length === 1 ? files[0].originalname : `${files[0].originalname} (+${files.length - 1} more)`,
+        fileHash: hash, sourceImages,
+        createdBy: (req.admin && req.admin.email) || '',
+      });
+    }
 
-    const job = await PdfImportJob.create({
-      status: 'queued', stage: 'Queued',
-      fileName: req.file.originalname, fileHash: hash,
-      pdfUrl: (stored && stored.url) || '',
-      pdfPublicId: (stored && stored.publicId) || '',
-      pdfBase64: stored ? '' : req.file.buffer.toString('base64'),
-      createdBy: (req.admin && req.admin.email) || '',
-    });
-
-    // The queue is in-process, so hand the buffer we already have straight to
-    // the worker. The initial import then never round-trips to Cloudinary at
-    // all — only the later reprocess/image-replace routes need to re-fetch.
-    enqueueImportJob(job._id, req.file.buffer); // not awaited — processing happens in the background, request returns now
+    // The queue is in-process, so hand the buffers we already have straight
+    // to the worker. The initial import then never round-trips to Cloudinary
+    // at all — only later reprocess/image-replace routes need to re-fetch.
+    const providedSource = isPdf ? files[0].buffer : files.map(f => f.buffer);
+    enqueueImportJob(job._id, providedSource); // not awaited — processing happens in the background, request returns now
     res.status(202).json({ jobId: job._id, status: 'queued' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -88,6 +129,20 @@ router.get('/import-status/:jobId', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── 2b. Cancel — stops the in-flight AI request and marks the job cancelled ──
+router.post('/import-status/:jobId/cancel', async (req, res) => {
+  try {
+    const wasRunning = cancelImportJob(req.params.jobId);
+    if (!wasRunning) {
+      // Not actively running (already finished, failed, or never started) —
+      // still fine; just report current status rather than erroring.
+      const job = await PdfImportJob.findById(req.params.jobId).select('status').lean();
+      if (!job) return res.status(404).json({ error: 'Import job not found' });
+      return res.json({ status: job.status, message: 'Job was not running — nothing to cancel.' });
+    }
+    res.json({ status: 'cancelling' }); // the worker updates the real status to 'cancelled' once it unwinds; poll /import-status for that
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 // ── 3. Full structured result — for the teacher review screen ──
 router.get('/import/:jobId', async (req, res) => {
   try {
@@ -100,11 +155,29 @@ router.get('/import/:jobId', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── 3b. Original PDF — for side-by-side reference (spec #25, #26) ──
+// ── 3b. Original PDF/photos — for side-by-side reference (spec #25, #26) ──
 router.get('/import/:jobId/pdf', async (req, res) => {
   try {
-    const job = await PdfImportJob.findById(req.params.jobId).select('pdfUrl pdfPublicId pdfBase64 fileName').lean();
+    const job = await PdfImportJob.findById(req.params.jobId).select('sourceType pdfUrl pdfPublicId pdfBase64 sourceImages fileName').lean();
     if (!job) return res.status(404).json({ error: 'Not found' });
+
+    if (job.sourceType === 'images') {
+      const urls = (job.sourceImages || []).map(img => img.url || (img.base64 ? `data:image/png;base64,${img.base64}` : '')).filter(Boolean);
+      if (!urls.length) return res.status(404).json({ error: 'Not found' });
+      // A single photo can just redirect straight to it; multiple photos
+      // (a whole paper shot page-by-page) get a minimal stacked gallery so
+      // "view original" still shows every page, not just the first.
+      if (urls.length === 1) return res.redirect(urls[0]);
+      const safeName = (job.fileName || 'Imported pages').replace(/[<>&"]/g, '');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeName}</title>
+        <style>body{margin:0;background:#1a1a1a;padding:16px;font-family:sans-serif}
+        img{display:block;max-width:100%;margin:0 auto 16px;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.4)}
+        p{color:#aaa;text-align:center;font-size:12px;margin:0 0 4px}</style></head>
+        <body>${urls.map((u, i) => `<p>Page ${i + 1} of ${urls.length}</p><img src="${u}" alt="Page ${i + 1}">`).join('')}</body></html>`;
+      res.setHeader('Content-Type', 'text/html');
+      return res.send(html);
+    }
+
     // Cloudinary-hosted: redirect so the bytes never pass through this server.
     // Sign the URL when we have the public_id, so the teacher's browser isn't
     // refused by the account's PDF/raw delivery restriction either.
@@ -127,8 +200,7 @@ router.post('/import/:jobId/reprocess-question/:index', async (req, res) => {
     const q = job.questions[i];
     if (!q) return res.status(404).json({ error: 'Question not found in this job' });
 
-    const pdfBuffer = await getJobPdfBuffer(job);
-    const extraction = await extractPdf(pdfBuffer);
+    const extraction = await getJobExtraction(job);
     const pageStart = q.pageStart || 1, pageEnd = q.pageEnd || pageStart;
     const pageNumbers = [];
     for (let p = pageStart; p <= pageEnd; p++) pageNumbers.push(p);
@@ -170,8 +242,7 @@ router.put('/import/:jobId/questions/:index/image', async (req, res) => {
     const job = await PdfImportJob.findById(req.params.jobId);
     if (!job || !job.questions[req.params.index]) return res.status(404).json({ error: 'Not found' });
 
-    const pdfBuffer = await getJobPdfBuffer(job);
-    const extraction = await extractPdf(pdfBuffer);
+    const extraction = await getJobExtraction(job);
     const found = extraction.embeddedImages.find(i => i.index === embeddedImageIndex);
     if (!found) return res.status(404).json({ error: 'Image index not found in this document' });
 
@@ -188,7 +259,7 @@ router.post('/import/:jobId/create-draft', async (req, res) => {
   try {
     const job = await PdfImportJob.findById(req.params.jobId).select('-pdfBase64');
     if (!job) return res.status(404).json({ error: 'Import job not found' });
-    if (job.status !== 'done') return res.status(400).json({ error: `Import is still ${job.status} — wait for it to finish before creating a draft` });
+    if (job.status !== 'done' && job.status !== 'cancelled') return res.status(400).json({ error: `Import is still ${job.status} — wait for it to finish (or cancel it) before creating a draft` });
     if (job.createdTestId) return res.status(200).json({ testId: job.createdTestId, message: 'Draft already created for this import' });
 
     const meta = req.body || {}; // optional teacher-supplied metadata (spec #33) — title/subject/topic/duration/batches

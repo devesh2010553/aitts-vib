@@ -35,21 +35,40 @@ const draftQuestionSchema = new Schema({
 }, { _id: false });
 
 const pdfImportJobSchema = new Schema({
-  status: { type: String, enum: ['queued', 'processing', 'done', 'failed'], default: 'queued' },
+  status: { type: String, enum: ['queued', 'processing', 'done', 'failed', 'cancelled'], default: 'queued' },
   stage:  { type: String, default: 'Queued' }, // human-readable current stage, shown in the progress UI
   error:  { type: String, default: '' },
 
   fileName: { type: String, default: '' },
   fileHash: { type: String, index: true }, // sha256 — duplicate-import detection (#44)
   pageCount: { type: Number, default: 0 },
+
+  // What was actually uploaded — a single PDF, or one-or-more standalone
+  // image files (e.g. phone photos of each page of a question paper).
+  // Everything downstream (importQueue.js's extraction step) produces the
+  // exact same shape either way, so nothing past this field cares which it
+  // was.
+  sourceType: { type: String, enum: ['pdf', 'images'], default: 'pdf' },
+
   // Original PDF, kept for teacher side-by-side reference (#25).
   // PREFERRED: pdfUrl — a Cloudinary `raw` resource URL, a few bytes in Mongo.
   // FALLBACK: pdfBase64 — only written when Cloudinary isn't configured, and
   // still read for jobs created before the Cloudinary switch. Always read the
   // PDF through getJobPdfBuffer() (utils/importQueue.js), never these directly.
+  // Only populated when sourceType === 'pdf'.
   pdfUrl:      { type: String, default: '' },
   pdfPublicId: { type: String, default: '' }, // needed to mint a signed URL if public delivery of raw/PDF is disabled on the account
   pdfBase64:   { type: String, default: '' },
+
+  // Original source photos, in page order — only populated when
+  // sourceType === 'images'. Same Cloudinary-preferred/base64-fallback
+  // convention as the PDF fields above; read through getJobImageBuffers()
+  // (utils/importQueue.js), never these directly.
+  sourceImages: [{
+    url:      { type: String, default: '' },
+    publicId: { type: String, default: '' },
+    base64:   { type: String, default: '' }, // only set when Cloudinary isn't configured
+  }],
 
   questionsDetected:  { type: Number, default: 0 },
   totalQuestionsGuess:{ type: Number, default: 0 }, // rough estimate for progress display, not exact
@@ -71,7 +90,7 @@ const pdfImportJobSchema = new Schema({
 // an in-progress job is never accidentally cleaned up mid-run.
 pdfImportJobSchema.index(
   { updatedAt: 1 },
-  { expireAfterSeconds: 14 * 24 * 60 * 60, partialFilterExpression: { status: { $in: ['done', 'failed'] } } }
+  { expireAfterSeconds: 14 * 24 * 60 * 60, partialFilterExpression: { status: { $in: ['done', 'failed', 'cancelled'] } } }
 );
 
 module.exports = chatDb.model('PdfImportJob', pdfImportJobSchema);

@@ -65,8 +65,17 @@ const geminiApiUrl = () => `https://generativelanguage.googleapis.com/v1beta/mod
 const GROQ_MAX_IMAGES_PER_REQUEST = { 'qwen/qwen3.6-27b': 5, 'qwen/qwen3.8-27b': 3 };
 const IMAGE_CAP = PROVIDER === 'gemini' ? 16 : (GROQ_MAX_IMAGES_PER_REQUEST[MODEL] || 3);
 
-const MAX_RETRIES = parseInt(process.env.AI_IMPORT_MAX_RETRIES) || 4;
+const MAX_RETRIES = parseInt(process.env.AI_IMPORT_MAX_RETRIES) || (PROVIDER === 'gemini' ? 7 : 4);
 const RETRY_BASE_MS = parseInt(process.env.AI_IMPORT_RETRY_BASE_MS) || 3000;
+// Gemini's free tier occasionally returns 503 UNAVAILABLE ("high demand")
+// for a stretch that can run well past a minute, not just a few seconds —
+// Google's own guidance for this specific error is "wait and retry," and
+// the old 4-attempt/~45s-total budget gave up before demand usually clears.
+// Uncapped doubling would also make later attempts absurdly slow (attempt 6
+// alone would be 96s) — this caps each individual wait so more attempts
+// actually fit in a reasonable total window instead of one huge final wait.
+const RETRY_MAX_MS = parseInt(process.env.AI_IMPORT_RETRY_MAX_MS) || 30000;
+function backoffMs(attempt) { return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, attempt)); }
 const MAX_OUTPUT_TOKENS = 16000; // Groq's documented ceiling for the qwen models is 16,384; Gemini 2.5 Flash allows far more — this is sized to Groq's tighter limit so a page's JSON doesn't get truncated mid-object on either provider
 
 const BOX_FORMAT_INSTRUCTION = PROVIDER === 'gemini'
@@ -238,7 +247,7 @@ async function withRetries(providerLabel, doRequest) {
       if (networkErr.name === 'AbortError') throw networkErr;
       // fetch itself threw (DNS blip, connection reset) — retryable, same as a 5xx.
       lastErr = networkErr;
-      if (attempt < MAX_RETRIES) { await sleep(RETRY_BASE_MS * Math.pow(2, attempt)); continue; }
+      if (attempt < MAX_RETRIES) { await sleep(backoffMs(attempt)); continue; }
       throw networkErr;
     }
 
@@ -267,8 +276,9 @@ async function withRetries(providerLabel, doRequest) {
     lastErr = new Error(`${providerLabel} error ${outcome.status}: ${(outcome.text || '').slice(0, 300)}`);
     if (!retryable || attempt === MAX_RETRIES) throw lastErr;
 
-    const waitMs = outcome.retryAfterMs || RETRY_BASE_MS * Math.pow(2, attempt);
-    console.warn(`[AI-IMPORT] ${outcome.status} from ${providerLabel}, retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
+    const waitMs = outcome.retryAfterMs || backoffMs(attempt);
+    const reason = outcome.status === 503 ? `${providerLabel} is overloaded (high demand)` : `${outcome.status} from ${providerLabel}`;
+    console.warn(`[AI-IMPORT] ${reason}, retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
     await sleep(waitMs);
   }
   throw lastErr;

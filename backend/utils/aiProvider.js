@@ -21,8 +21,10 @@
  *   structured JSON output (responseMimeType: 'application/json') instead of
  *   hoping the model doesn't wrap its answer in a markdown fence. Get a key
  *   at aistudio.google.com — no credit card required — and set it as
- *   GEMINI_API_KEY. Model defaults to gemini-2.5-flash; override with
- *   AI_IMPORT_MODEL if Google renames/deprecates it later.
+ *   GEMINI_API_KEY. Model defaults to gemini-3.6-flash; override with
+ *   AI_IMPORT_MODEL if Google renames/deprecates it later (they retire
+ *   Gemini model IDs for new API keys periodically — check
+ *   ai.google.dev/gemini-api/docs/models if this ever 404s again).
  *
  * Both API keys are read straight from process.env and never leave the
  * server. Neither provider is ever sent the raw PDF — only the already
@@ -39,7 +41,7 @@
 const PROVIDER = process.env.AI_IMPORT_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
 
 const GROQ_MODEL_DEFAULT   = 'qwen/qwen3.8-27b';
-const GEMINI_MODEL_DEFAULT = 'gemini-2.5-flash';
+const GEMINI_MODEL_DEFAULT = 'gemini-3.6-flash'; // gemini-2.5-flash was retired for new API keys — confirm at ai.google.dev/gemini-api/docs/models if this 404s again later
 // A common mix-up: AI_IMPORT_MODEL selects the MODEL, AI_IMPORT_PROVIDER
 // selects the PROVIDER. Setting AI_IMPORT_MODEL=gemini (or =groq) sends that
 // literal string to the API as a model name, which 404s with a confusing

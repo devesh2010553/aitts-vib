@@ -1,4 +1,13 @@
-var CACHE = 'aiits-v6';
+// Bump this string on every deploy that changes any cached asset (JS/CSS/
+// HTML) — it's the ONLY thing that makes activate() below evict the old
+// cache. Forgetting to bump it is exactly what caused a real production bug:
+// admins' browsers kept serving a stale cached frontend/ai-import.js (with
+// an old upload field name) against an already-updated backend, producing
+// "MulterError: Unexpected field" server-side and a confusing "Unexpected
+// token '<'" JSON-parse error client-side (Express's default HTML error
+// page being fed to res.json()). Bump this on every deploy touching
+// frontend/*.js or *.html, not just when something "feels" cache-related.
+var CACHE = 'aiits-v7';
 var STATIC = ['/', '/manifest.json'];
 self.addEventListener('install', function(e) {
   e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(STATIC); }).then(function(){ return self.skipWaiting(); }).catch(function(){ return self.skipWaiting(); }));

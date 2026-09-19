@@ -303,6 +303,29 @@ io.on('connection', socket => {
   });
 });
 
+// ── Global error handler ────────────────────────────────────────────────
+// Without this, ANY error thrown by middleware BEFORE a route's own
+// try/catch runs (multer's fileFilter rejecting a file, a body-parser
+// choking on malformed input, etc.) falls through to Express's built-in
+// default error handler, which sends an HTML page. Every frontend fetch()
+// call in this app does res.json() unconditionally, so that HTML page comes
+// back as "Unexpected token '<', "<!DOCTYPE "... is not valid JSON" — a
+// real bug that hit the AI PDF import upload (a MulterError from a
+// mismatched form field name bypassed that route's own try/catch entirely).
+// Must be registered with all 4 handler args (err, req, res, next) — that
+// arity is what tells Express this is error-handling middleware — and,
+// per Express's rules, must come after every other app.use()/app.get() so
+// it actually sees their errors.
+app.use((err, req, res, next) => {
+  console.error('[SERVER] Unhandled error on', req.method, req.originalUrl, ':', err.message);
+  if (res.headersSent) return next(err);
+  const multer = require('multer');
+  if (err instanceof multer.MulterError) {
+    return res.status(400).json({ error: `Upload error: ${err.message}${err.field ? ` (field: ${err.field})` : ''}` });
+  }
+  res.status(err.status || err.statusCode || 500).json({ error: err.message || 'Unexpected server error' });
+});
+
 const PORT = process.env.PORT||3000;
 server.listen(PORT,'0.0.0.0',() => console.log('[SERVER] AIITS on port',PORT));
 // maxPoolSize: explicit rather than relying on the driver default (100) —

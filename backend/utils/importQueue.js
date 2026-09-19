@@ -1,8 +1,7 @@
 /**
  * In-process import job processor. Deliberately NOT Redis/BullMQ/a separate
- * worker service (spec #36) — this app already has one precedent for this
- * exact pattern (utils/sheetsQueue.js's debounced write-behind queue), and a
- * single admin uploading occasional PDFs doesn't need more than that.
+ * worker service (spec #36) — a single admin uploading occasional PDFs
+ * doesn't need more than that.
  *
  * Concurrency is capped at 1 PDF at a time on purpose: PDF import is
  * I/O-bound (subprocess-free now, but still image-heavy AI calls +
@@ -273,6 +272,19 @@ async function processJob(jobId, providedSource) {
         });
       } catch (e) {
         if (e.name === 'AbortError' || cancelledJobs.has(key)) { await markCancelled(job, key); return; }
+        if (e.quotaExhausted) {
+          // Every configured Gemini key is exhausted — every remaining page
+          // would hit the exact same wall. Stop here with a clear message
+          // instead of grinding through each remaining page's own retry
+          // budget for nothing; whatever was already detected is kept
+          // (same "partial results" UX as a manual cancel, see markCancelled).
+          console.error('[AI-IMPORT] Job', jobId, 'stopped —', e.message);
+          job.error = e.message;
+          job.questions = allQuestions;
+          job.questionsDetected = allQuestions.length;
+          await markCancelled(job, key);
+          return;
+        }
         // One bad batch shouldn't fail the whole document — flag and continue,
         // teacher reviews/reprocesses just that page range (spec #27, #42).
         console.error('[AI-IMPORT] Batch failed:', e.message);

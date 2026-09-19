@@ -69,11 +69,6 @@ router.post('/register', async (req, res) => {
 
     const profile = await User.create({ uid: decoded.uid, name, phone, coachingName, fatherName, fatherOccupation, whatsappNumber, batch });
 
-    try {
-      const { queueStudent } = require('../utils/sheetsQueue');
-      queueStudent({ userId: profile.uid, name: profile.name, email: decoded.email, phone: profile.phone, batch: profile.batch, coachingName: profile.coachingName, fatherName: profile.fatherName, fatherOccupation: profile.fatherOccupation, whatsappNumber: profile.whatsappNumber, createdAt: profile.createdAt, totalTests: 0, totalMarks: 0, highestMarks: 0 });
-    } catch (e) {}
-
     res.status(201).json({
       message: 'Account created',
       user: { id: profile.uid, name: profile.name, email: decoded.email, batch: profile.batch, coachingName: profile.coachingName },

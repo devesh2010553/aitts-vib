@@ -62,9 +62,7 @@ router.get('/stats', async (req, res) => {
       const used = Math.round(s.dataSize/1024/1024*10)/10;
       storageInfo = { usedMB: used, totalMB: 512, usedPct: Math.round(used/512*100), freesMB: Math.round((512-used)*10)/10, note: 'MongoDB-side only (chat/ad-images/PDF-imports/cache) — Tests/Students/Results now live on DynamoDB' };
     } catch(e) {}
-    let sheetStats = null;
-    try { sheetStats = await require('../utils/sheets').getSheetStats(); } catch(e) {}
-    res.json({ totalTests, totalStudents, totalAttempts, storageInfo, sheetStats });
+    res.json({ totalTests, totalStudents, totalAttempts, storageInfo });
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -171,86 +169,18 @@ router.post('/results/:userId/:testId/bonus', async (req, res) => {
 });
 
 // Delete results for a test by batch
-// DELETE from DynamoDB + archive Sheet rows to AIITS_Archive
-// Frees DynamoDB storage AND Sheet row limit. Data preserved in Archive sheet.
+// DELETE from DynamoDB — results are no longer archived anywhere first
+// (Google Sheets integration removed entirely; nothing writes student data
+// or results to a Sheet anymore). This used to fail-closed on a Sheets
+// archive step before deleting anything — meaning any Sheets API hiccup
+// (auth expiry, quota, network blip) blocked deletion completely, with no
+// way to actually clear a test's results until that hiccup resolved. That
+// entire step is gone now, not just made non-fatal.
 router.delete('/tests/:id/results-only', async (req, res) => {
   try {
     const testId = req.params.id;
     const batch  = req.query.batch || 'all';
 
-    // 1. Archive Sheet rows for this test → AIITS_Archive, then remove from main sheet.
-    // Deliberately FAIL-CLOSED: if archiving throws, we stop here and do NOT
-    // touch DynamoDB. This used to be a non-fatal try/catch that logged the
-    // error and deleted from DynamoDB anyway — meaning a Sheets API hiccup
-    // (auth expiry, quota, network blip) would silently and permanently wipe
-    // real student results with zero backup and zero warning to the admin.
-    let archived = 0;
-    try {
-      const { archiveTestResults } = require('../utils/sheets');
-      const r = await archiveTestResults(testId, batch);
-      archived = r.archived;
-    } catch(e) {
-      console.error('[ADMIN] Sheet archive error — aborting delete, nothing was removed:', e.message);
-      return res.status(502).json({ error: 'Could not archive to the Sheet, so nothing was deleted (this action never deletes without a successful archive first). Sheet error: ' + e.message });
-    }
-
-    // 2. Delete from DynamoDB, recalculate each affected student's stats
-    const affected = await Result.deleteByTest(testId, batch);
-    const userIds  = [...new Set(affected.map(r => r.userId))];
-    invalidate({ testId, batch: batch !== 'all' ? batch : undefined });
-    for (const uid of userIds) {
-      const rem = (await Result.queryByUser(uid)).filter(r => !r.inProgress);
-      await User.update(uid, {
-        totalTests:   rem.length,
-        totalMarks:   rem.reduce((s,r) => s+(r.obtainedMarks||0), 0),
-        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0,
-      });
-    }
-
-    res.json({
-      deleted: affected.length,
-      archived,
-      message: affected.length + ' results removed from DynamoDB. ' + archived + ' rows moved to Archive sheet.'
-    });
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-// GET leaderboard from AIITS_Archive sheet (used after results cleared)
-router.get('/tests/:id/sheet-leaderboard', async (req, res) => {
-  try {
-    const batch = req.query.batch || 'all';
-    const { readArchivedResults } = require('../utils/sheets');
-    const rows = await readArchivedResults(req.params.id, batch);
-    if (!rows.length) return res.json([]);
-
-    const sorted = rows.sort((a,b) => b.obtainedMarks - a.obtainedMarks || a.timeTaken - b.timeTaken);
-    const bMap = {'11':'Class 11','12':'Class 12','dropper':'Dropper'};
-    res.json(sorted.map((r,i) => ({
-      ...r,
-      rank: i+1,
-      batchLabel: bMap[r.batch] || r.batch,
-      percentage: r.totalMarks ? (r.obtainedMarks/r.totalMarks*100).toFixed(1) : r.percentage.toFixed(1)
-    })));
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-router.delete('/tests/:id/results', async (req, res) => {
-  try {
-    const testId = req.params.id;
-    const batch  = req.query.batch || 'all';
-
-    // Same fail-closed reasoning as /results-only above.
-    let archived = 0;
-    try {
-      const { archiveTestResults } = require('../utils/sheets');
-      const r = await archiveTestResults(testId, batch);
-      archived = r.archived;
-    } catch(e) {
-      console.error('[ADMIN] Sheet archive error — aborting delete, nothing was removed:', e.message);
-      return res.status(502).json({ error: 'Could not archive to the Sheet, so nothing was deleted (this action never deletes without a successful archive first). Sheet error: ' + e.message });
-    }
-
-    // 2. Delete from DynamoDB, recalculate each affected student's stats
     const affected = await Result.deleteByTest(testId, batch);
     const userIds  = [...new Set(affected.map(r => r.userId))];
     invalidate({ testId, batch: batch !== 'all' ? batch : undefined });
@@ -265,7 +195,30 @@ router.delete('/tests/:id/results', async (req, res) => {
     const remainingForTest = (await Result.queryByTest(testId)).filter(r => !r.inProgress).length;
     await Test.setAttemptCount(testId, remainingForTest);
 
-    res.json({ deleted: affected.length, archived, message: affected.length + ' results deleted from DynamoDB. ' + archived + ' rows archived to AIITS_Archive sheet.' });
+    res.json({ deleted: affected.length, message: affected.length + ' result(s) permanently deleted.' });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+router.delete('/tests/:id/results', async (req, res) => {
+  try {
+    const testId = req.params.id;
+    const batch  = req.query.batch || 'all';
+
+    const affected = await Result.deleteByTest(testId, batch);
+    const userIds  = [...new Set(affected.map(r => r.userId))];
+    invalidate({ testId, batch: batch !== 'all' ? batch : undefined });
+    for (const uid of userIds) {
+      const rem = (await Result.queryByUser(uid)).filter(r => !r.inProgress);
+      await User.update(uid, {
+        totalTests:   rem.length,
+        totalMarks:   rem.reduce((s,r) => s+(r.obtainedMarks||0), 0),
+        highestMarks: rem.length ? Math.max(...rem.map(r=>r.obtainedMarks||0)) : 0,
+      });
+    }
+    const remainingForTest = (await Result.queryByTest(testId)).filter(r => !r.inProgress).length;
+    await Test.setAttemptCount(testId, remainingForTest);
+
+    res.json({ deleted: affected.length, message: affected.length + ' result(s) permanently deleted.' });
   } catch(err) {
     console.error('[ADMIN] delete results:', err);
     res.status(500).json({ error: err.message });

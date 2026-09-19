@@ -16,15 +16,25 @@
  *
  * - gemini (aistudio.google.com — Google AI Studio). Free tier ("Gemini Flash")
  *   is far more generous for this workload: no meaningful per-request image
- *   cap (our batches send a handful of images at most, nowhere near Gemini's
- *   actual ceiling), a much larger free RPM/TPM/RPD allowance, and native
- *   structured JSON output (responseMimeType: 'application/json') instead of
- *   hoping the model doesn't wrap its answer in a markdown fence. Get a key
- *   at aistudio.google.com — no credit card required — and set it as
+ *   cap, a much larger free RPM/TPM allowance, and native structured JSON
+ *   output (responseMimeType: 'application/json'). Get a key at
+ *   aistudio.google.com — no credit card required — and set it as
  *   GEMINI_API_KEY. Model defaults to gemini-3.6-flash; override with
  *   AI_IMPORT_MODEL if Google renames/deprecates it later (they retire
  *   Gemini model IDs for new API keys periodically — check
  *   ai.google.dev/gemini-api/docs/models if this ever 404s again).
+ *
+ *   MULTIPLE KEYS: since this deployment is Gemini-only (no Groq fallback —
+ *   deliberate choice), set GEMINI_API_KEY, GEMINI_API_KEY2, GEMINI_API_KEY3
+ *   (any subset; only GEMINI_API_KEY is required) to get 2-3x the effective
+ *   free-tier daily quota. Each AI Studio key has its OWN independent daily
+ *   cap, so once one key returns a genuine quota-exhausted 429 ("You
+ *   exceeded your current quota"), callGemini() immediately rotates to the
+ *   next configured key for a fresh quota bucket — instead of retrying the
+ *   same exhausted key, which can never succeed until that key's quota
+ *   resets (could be hours). A round-robin cursor also spreads normal,
+ *   non-error traffic across all configured keys rather than hammering key
+ *   #1 until it runs dry before ever touching #2/#3.
  *
  * Both API keys are read straight from process.env and never leave the
  * server. Neither provider is ever sent the raw PDF — only the already
@@ -33,12 +43,22 @@
  *
  * A page that gets rate-limited (429) or hits a transient 5xx used to be
  * recorded as a permanently "failed" batch with zero retry — that's the
- * single biggest reason large imports used to stop after only 2-3
- * questions. callModel() below retries both providers with backoff before
- * giving up on a page.
+ * original reason large imports used to stop after only 2-3 questions.
+ * callModel() below retries with backoff before giving up on a page.
+ *
+ * IMPORTANT — retry count vs quota: every retry attempt is a REAL API call
+ * that spends quota. MAX_RETRIES defaults to 4 for both providers on
+ * purpose — an earlier version bumped Gemini specifically to 7 to ride out
+ * "high demand" 503s, but that made things WORSE in practice: on a
+ * multi-page import, 7 retries/page burns through a free-tier daily quota
+ * far faster, so imports started hitting the hard 429 quota wall almost
+ * immediately instead of the occasional transient 503. With multi-key
+ * rotation now available, resilience comes from switching to a fresh quota
+ * bucket, not from hammering a single key harder.
  */
 
-const PROVIDER = process.env.AI_IMPORT_PROVIDER || (process.env.GEMINI_API_KEY ? 'gemini' : 'groq');
+const GEMINI_KEYS = [process.env.GEMINI_API_KEY, process.env.GEMINI_API_KEY2, process.env.GEMINI_API_KEY3].filter(Boolean);
+const PROVIDER = process.env.AI_IMPORT_PROVIDER || (GEMINI_KEYS.length ? 'gemini' : 'groq');
 
 const GROQ_MODEL_DEFAULT   = 'qwen/qwen3.8-27b';
 const GEMINI_MODEL_DEFAULT = 'gemini-3.6-flash'; // gemini-2.5-flash was retired for new API keys — confirm at ai.google.dev/gemini-api/docs/models if this 404s again later
@@ -65,18 +85,23 @@ const geminiApiUrl = () => `https://generativelanguage.googleapis.com/v1beta/mod
 const GROQ_MAX_IMAGES_PER_REQUEST = { 'qwen/qwen3.6-27b': 5, 'qwen/qwen3.8-27b': 3 };
 const IMAGE_CAP = PROVIDER === 'gemini' ? 16 : (GROQ_MAX_IMAGES_PER_REQUEST[MODEL] || 3);
 
-const MAX_RETRIES = parseInt(process.env.AI_IMPORT_MAX_RETRIES) || (PROVIDER === 'gemini' ? 7 : 4);
+// See the big header comment above re: retry count vs quota consumption —
+// 4 is deliberate, not a placeholder.
+const MAX_RETRIES = parseInt(process.env.AI_IMPORT_MAX_RETRIES) || 4;
 const RETRY_BASE_MS = parseInt(process.env.AI_IMPORT_RETRY_BASE_MS) || 3000;
-// Gemini's free tier occasionally returns 503 UNAVAILABLE ("high demand")
-// for a stretch that can run well past a minute, not just a few seconds —
-// Google's own guidance for this specific error is "wait and retry," and
-// the old 4-attempt/~45s-total budget gave up before demand usually clears.
-// Uncapped doubling would also make later attempts absurdly slow (attempt 6
-// alone would be 96s) — this caps each individual wait so more attempts
-// actually fit in a reasonable total window instead of one huge final wait.
-const RETRY_MAX_MS = parseInt(process.env.AI_IMPORT_RETRY_MAX_MS) || 30000;
+const RETRY_MAX_MS = parseInt(process.env.AI_IMPORT_RETRY_MAX_MS) || 20000; // caps each individual wait so a run of retries doesn't spiral into a multi-minute stall
 function backoffMs(attempt) { return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * Math.pow(2, attempt)); }
-const MAX_OUTPUT_TOKENS = 16000; // Groq's documented ceiling for the qwen models is 16,384; Gemini 2.5 Flash allows far more — this is sized to Groq's tighter limit so a page's JSON doesn't get truncated mid-object on either provider
+const MAX_OUTPUT_TOKENS = 16000; // Groq's documented ceiling for the qwen models is 16,384; Gemini allows far more — sized to Groq's tighter limit so a page's JSON doesn't get truncated mid-object on either provider
+
+// How long to skip a Gemini key after it returns a genuine quota-exhausted
+// 429 (see parseGeminiRetryDelayMs below for how that's distinguished from a
+// short transient throttle). This is a heuristic, not a known reset time —
+// AI Studio free-tier daily quotas reset roughly once every 24h but the
+// exact instant isn't exposed in the error response, so this just avoids
+// re-trying a key we already know is dead for a while. A restart clears it.
+const GEMINI_KEY_COOLDOWN_MS = parseInt(process.env.AI_IMPORT_GEMINI_KEY_COOLDOWN_MS) || 6 * 60 * 60 * 1000;
+const geminiKeyExhaustedUntil = new Map(); // apiKey string -> epoch ms
+let geminiKeyCursor = 0; // round-robins WHICH key starts each fresh call, so normal traffic spreads across all configured keys too
 
 const BOX_FORMAT_INSTRUCTION = PROVIDER === 'gemini'
   ? 'a bounding box as integers [ymin,xmin,ymax,xmax] normalized to a 0-1000 scale — this is the exact box convention Gemini is trained on for object detection; do NOT convert it to a 0-1 float range and do NOT reorder it to x-first, either of those will make the crop wrong'
@@ -226,13 +251,60 @@ function parseJsonResponse(text) {
   return JSON.parse(cleaned);
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+/**
+ * Same as a plain setTimeout-based sleep, but abortable via an AbortSignal.
+ * Without this, hitting "Cancel" during a backoff wait (which can be up to
+ * RETRY_MAX_MS = 20s) did nothing until that wait finished on its own —
+ * cancellation could take the better part of a minute to actually stop
+ * anything. Every sleep() call in the retry loop below passes the batch's
+ * signal through, so an abort() interrupts a wait immediately, not just an
+ * in-flight fetch.
+ */
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal && signal.aborted) { const e = new Error('Aborted'); e.name = 'AbortError'; return reject(e); }
+    const t = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        clearTimeout(t);
+        const e = new Error('Aborted'); e.name = 'AbortError'; reject(e);
+      }, { once: true });
+    }
+  });
+}
+
+/**
+ * Distinguishes a short, self-resolving Gemini rate limit from a hard quota
+ * cap. Gemini includes a RetryInfo.retryDelay (e.g. "19s") in the error body
+ * when it expects the limit to clear on its own soon; a genuine
+ * quota-exceeded response (daily cap hit, "check your plan and billing")
+ * omits it, because retrying — on THIS key — won't help until the quota
+ * window resets, which could be hours away. Returns the wait in ms, or null
+ * if no such hint was present (signals a hard quota exhaustion upstream).
+ */
+function parseGeminiRetryDelayMs(text) {
+  try {
+    const data = JSON.parse(text);
+    const details = data && data.error && data.error.details;
+    if (Array.isArray(details)) {
+      for (const d of details) {
+        if (typeof d.retryDelay === 'string') {
+          const m = /^([\d.]+)s$/.exec(d.retryDelay.trim());
+          if (m) return Math.ceil(parseFloat(m[1]) * 1000);
+        }
+      }
+    }
+  } catch (e) { /* not JSON, or not the shape we expect — treat as no hint */ }
+  return null;
+}
 
 /** Shared retry/backoff loop — takes a `doRequest()` that performs ONE HTTP
- *  attempt and returns { ok, status, retryAfterMs, getText() } so the two
- *  providers' very different response shapes only need to be normalized
- *  once each, not duplicated per attempt. */
-async function withRetries(providerLabel, doRequest) {
+ *  attempt and returns { ok, status, text, retryAfterMs?, quotaExhausted? }.
+ *  A quotaExhausted outcome is thrown immediately (err.quotaExhausted =
+ *  true), never retried here — callGemini()'s key-rotation loop is what
+ *  handles that case, by moving to a different key's quota entirely rather
+ *  than waiting out a cap that retrying can't fix. */
+async function withRetries(providerLabel, doRequest, signal) {
   let lastErr;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     let outcome;
@@ -247,7 +319,7 @@ async function withRetries(providerLabel, doRequest) {
       if (networkErr.name === 'AbortError') throw networkErr;
       // fetch itself threw (DNS blip, connection reset) — retryable, same as a 5xx.
       lastErr = networkErr;
-      if (attempt < MAX_RETRIES) { await sleep(backoffMs(attempt)); continue; }
+      if (attempt < MAX_RETRIES) { await sleep(backoffMs(attempt), signal); continue; }
       throw networkErr;
     }
 
@@ -263,9 +335,17 @@ async function withRetries(providerLabel, doRequest) {
         lastErr = new Error(`${providerLabel} returned invalid JSON: ${parseErr.message}`);
         if (attempt === MAX_RETRIES) throw lastErr;
         console.warn(`[AI-IMPORT] Malformed JSON from ${providerLabel}, retrying (attempt ${attempt + 1}/${MAX_RETRIES})`);
-        await sleep(RETRY_BASE_MS);
+        await sleep(RETRY_BASE_MS, signal);
         continue;
       }
+    }
+
+    if (outcome.quotaExhausted) {
+      // Not worth retrying THIS request at all — callGemini()'s caller
+      // handles switching to a different key's quota instead.
+      const err = new Error(`${providerLabel} error ${outcome.status}: ${(outcome.text || '').slice(0, 300)}`);
+      err.quotaExhausted = true;
+      throw err;
     }
 
     // 429 (rate limit) and 5xx (transient) are worth retrying — a page
@@ -279,14 +359,14 @@ async function withRetries(providerLabel, doRequest) {
     const waitMs = outcome.retryAfterMs || backoffMs(attempt);
     const reason = outcome.status === 503 ? `${providerLabel} is overloaded (high demand)` : `${outcome.status} from ${providerLabel}`;
     console.warn(`[AI-IMPORT] ${reason}, retrying in ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
-    await sleep(waitMs);
+    await sleep(waitMs, signal);
   }
   throw lastErr;
 }
 
 async function callGroq(content, signal) {
   if (!process.env.GROQ_API_KEY) {
-    throw new Error('GROQ_API_KEY is not set — configure it, or switch to Gemini (GEMINI_API_KEY), to enable AI PDF import.');
+    throw new Error('GROQ_API_KEY is not set — configure it to enable AI PDF import (this deployment is Groq-only in this branch; set AI_IMPORT_PROVIDER=gemini and GEMINI_API_KEY to switch).');
   }
   const groqContent = content.map(b =>
     b.type === 'image'
@@ -318,13 +398,13 @@ async function callGroq(content, signal) {
     const retryAfterHeader = res.headers.get('retry-after');
     const retryAfterMs = retryAfterHeader ? Math.max(1000, parseFloat(retryAfterHeader) * 1000) : null;
     return { ok: false, status: res.status, text, retryAfterMs };
-  });
+  }, signal);
 }
 
-async function callGemini(content, signal) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY is not set — get a free key at aistudio.google.com to enable AI PDF import.');
-  }
+/** One attempt at ONE Gemini request using a SPECIFIC key (with its own
+ *  internal retry/backoff for transient errors). Separated from callGemini()
+ *  so the key-rotation loop there can call this once per configured key. */
+async function callGeminiWithKey(content, signal, apiKey, keyLabel) {
   const parts = content.map(b =>
     b.type === 'image'
       ? { inline_data: { mime_type: b.mimeType, data: b.base64 } }
@@ -339,10 +419,10 @@ async function callGemini(content, signal) {
     },
   });
 
-  return withRetries('Gemini', async () => {
+  return withRetries(keyLabel, async () => {
     const res = await fetch(geminiApiUrl(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body,
       signal,
     });
@@ -360,12 +440,64 @@ async function callGemini(content, signal) {
     }
     const text = await res.text().catch(() => '');
     if (res.status === 404) {
-      return { ok: false, status: 404, text: `Gemini model "${MODEL}" was not found (check AI_IMPORT_MODEL is a real model id like "gemini-2.5-flash", not a provider name — see AI_IMPORT_PROVIDER for that): ${text}` };
+      return { ok: false, status: 404, text: `Gemini model "${MODEL}" was not found (check AI_IMPORT_MODEL is a real model id like "gemini-3.6-flash", not a provider name — see AI_IMPORT_PROVIDER for that): ${text}` };
     }
-    // Gemini doesn't send Retry-After; RESOURCE_EXHAUSTED (429) backs off
-    // on the standard exponential schedule instead.
+    if (res.status === 429) {
+      const retryDelayMs = parseGeminiRetryDelayMs(text);
+      if (retryDelayMs != null) return { ok: false, status: 429, text, retryAfterMs: retryDelayMs }; // short, self-clearing throttle — worth retrying on this same key
+      return { ok: false, status: 429, text, quotaExhausted: true }; // hard cap — this key is done until it resets; caller rotates to the next one
+    }
     return { ok: false, status: res.status, text };
-  });
+  }, signal);
+}
+
+/**
+ * Tries every configured Gemini key in round-robin order until one
+ * succeeds. A quota-exhausted key is marked and skipped for
+ * GEMINI_KEY_COOLDOWN_MS on subsequent calls, and rotation to the next key
+ * happens immediately (no backoff) since a different key is a genuinely
+ * fresh quota bucket, not the same failure again.
+ */
+async function callGemini(content, signal) {
+  if (!GEMINI_KEYS.length) {
+    throw new Error('GEMINI_API_KEY is not set — get a free key at aistudio.google.com to enable AI PDF import.');
+  }
+
+  const now = Date.now();
+  const notCoolingDown = GEMINI_KEYS.filter(k => !geminiKeyExhaustedUntil.has(k) || geminiKeyExhaustedUntil.get(k) <= now);
+  // If literally every key is (heuristically) cooling down, try them anyway
+  // rather than refuse outright — the cooldown is a guess, not a certainty,
+  // and it's better to attempt and fail than to block an import on a guess.
+  const pool = (notCoolingDown.length ? notCoolingDown : GEMINI_KEYS);
+  const keysToTry = pool.map((_, i) => pool[(geminiKeyCursor + i) % pool.length]);
+
+  let lastErr;
+  for (let ki = 0; ki < keysToTry.length; ki++) {
+    const apiKey = keysToTry[ki];
+    const keyNum = GEMINI_KEYS.indexOf(apiKey) + 1;
+    const keyLabel = GEMINI_KEYS.length > 1 ? `Gemini (key ${keyNum}/${GEMINI_KEYS.length})` : 'Gemini';
+    try {
+      const result = await callGeminiWithKey(content, signal, apiKey, keyLabel);
+      geminiKeyExhaustedUntil.delete(apiKey); // a success means this key is healthy again, regardless of any earlier guess
+      geminiKeyCursor = (GEMINI_KEYS.indexOf(apiKey) + 1) % GEMINI_KEYS.length; // next fresh call starts from the next key
+      return result;
+    } catch (e) {
+      if (e.name === 'AbortError') throw e; // cancellation — never rotate/retry through this, propagate immediately
+      lastErr = e;
+      if (e.quotaExhausted) {
+        geminiKeyExhaustedUntil.set(apiKey, Date.now() + GEMINI_KEY_COOLDOWN_MS);
+        if (keysToTry.length > 1) console.warn(`[AI-IMPORT] ${keyLabel} hit its quota — switching to the next configured Gemini key.`);
+        continue; // different quota bucket entirely — no backoff needed, try it right away
+      }
+      // A non-quota failure (exhausted its own retries on 503s, malformed
+      // JSON after retries, etc.) isn't inherently fixed by switching keys,
+      // but if another key is configured it's still worth trying rather
+      // than failing the whole page over one key's bad luck.
+      if (ki < keysToTry.length - 1) console.warn(`[AI-IMPORT] ${keyLabel} failed (${e.message.slice(0, 150)}), trying next configured key.`);
+    }
+  }
+  if (GEMINI_KEYS.length > 1) lastErr.message += ` (all ${GEMINI_KEYS.length} configured Gemini keys are currently exhausted or failing)`;
+  throw lastErr;
 }
 
 async function callModel(content, signal) {

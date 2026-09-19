@@ -94,7 +94,10 @@
       }
       if (job.status === 'cancelled') {
         clearInterval(pollTimer); pollTimer = null;
-        setProgress('<p style="color:var(--text-muted)"><i class="fas fa-ban"></i> Import cancelled. ' + (job.questionsDetected ? esc(job.questionsDetected) + ' question(s) had already been detected — ' : '') + '<button class="btn btn-outline btn-sm" onclick="AiImport.loadReview(\'' + jobId + '\')">Review what was found so far</button></p>');
+        var stoppedMsg = job.error
+          ? '<i class="fas fa-exclamation-triangle" style="color:#d69e2e"></i> Import stopped: ' + esc(job.error)
+          : '<i class="fas fa-ban"></i> Import cancelled.';
+        setProgress('<p style="color:var(--text-muted)">' + stoppedMsg + ' ' + (job.questionsDetected ? esc(job.questionsDetected) + ' question(s) had already been detected — ' : '') + '<button class="btn btn-outline btn-sm" onclick="AiImport.loadReview(\'' + jobId + '\')">Review what was found so far</button></p>');
         return;
       }
       var lines = [

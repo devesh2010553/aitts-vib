@@ -249,21 +249,4 @@ router.get('/normalised', authenticateStudent, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET student's own archived results (after MongoDB cleared) — untouched,
-// this already read from Google Sheets, not Result directly.
-router.get('/archived/:userId', authenticateStudent, async (req, res) => {
-  try {
-    // Students can only read their own archive
-    if (String(req.user._id) !== req.params.userId && req.params.userId !== 'me') {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    const { readArchivedResults } = require('../utils/sheets');
-    // Pass no testId to get all results for this user from archive
-    const allRows = await readArchivedResults(null, null);
-    const userId  = String(req.user._id);
-    const myRows  = allRows.filter(r => r.userId === userId);
-    res.json(myRows.sort((a,b) => new Date(b.submittedAt) - new Date(a.submittedAt)));
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
 module.exports = router;

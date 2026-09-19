@@ -3,7 +3,6 @@ const router  = express.Router();
 const Result  = require('../dynamo/resultModel'); // was: const Result = require('../models/Result');
 const Test    = require('../dynamo/testModel');   // was: const Test = require('../models/Test');
 const User    = require('../dynamo/userModel');   // was: const UserProfile = require('../models/UserProfile');
-const { queueResult } = require('../utils/sheetsQueue');
 const { invalidate } = require('../utils/leaderboardCache');
 const { scheduleBroadcast } = require('../utils/rankingBroadcast');
 const { authenticateStudent } = require('../middleware/auth');
@@ -85,7 +84,7 @@ router.post('/submit', authenticateStudent, async (req, res) => {
     // conditioned on "no final result exists yet for this user+test", so a
     // double-click, a client retry after a dropped response, or two
     // near-simultaneous submit requests can never create two final results,
-    // double-count the attempt, or produce a duplicate Sheets export row.
+    // double-count the attempt, or create two of anything downstream.
     // If this IS a genuine duplicate, treat it as a safe idempotent
     // response — return the result that was already recorded — instead of
     // an error, and skip every side effect below since they already ran
@@ -149,7 +148,6 @@ router.post('/submit', authenticateStudent, async (req, res) => {
         Test.incrementAttemptCount(testId),
         User.applySubmitStats(req.user.uid, { marksGained: obtainedMarks }),
       ]);
-      queueResult({ submittedAt:new Date(), userName:req.user.name, userEmail:req.user.email, userPhone:req.user.phone||'', batch:req.user.batch, coachingName:req.user.coachingName, testTitle:test.title, subject:test.subject, topic:test.topic, obtainedMarks, totalMarks:test.totalMarks, percentage:pct, correctAnswers, wrongAnswers, notAttempted, timeTaken:tt, rank:finalOverallRank, batchRank:finalBatchRank, testId, userId:req.user.uid });
       invalidate({ testId, batch: req.user.batch }); // fire-and-forget — see leaderboardCache.js
       // Coalesced: bursts of near-simultaneous submissions for the same
       // test collapse into one top-10 read + one broadcast per short

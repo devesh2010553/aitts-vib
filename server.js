@@ -158,6 +158,18 @@ app.get('/sitemap.xml', (_,res) => {
 app.get('/adminvibacdonlineaiits', (_,res) => res.sendFile(path.join(__dirname,'frontend','adminvibacdonlineaiits.html')));
 app.get('/ad856eyqafggg',           (_,res) => res.sendFile(path.join(__dirname,'frontend','ad856eyqafggg.html')));
 
+// Password-reset landing page — this is what Firebase's email "reset your
+// password" link points to (see Firebase Console > Authentication >
+// Templates > Password reset > Customize action URL, set to
+// https://aitts.in/reset-password). Firebase does NOT serve this
+// automatically the way it would if this domain were on Firebase Hosting
+// (that's what the reserved /__/auth/action path is for) — since we're on
+// Render/Cloudflare instead, this page is what actually reads the mode/
+// oobCode query params Firebase's email link carries and completes the
+// reset client-side via confirmPasswordReset(). Needs the same Firebase
+// client config injected as index.html, hence the shared helper below.
+app.get('/reset-password', (req,res) => renderWithFirebaseConfig(req,res,'reset-password.html'));
+
 app.use('/api/auth',     require('./backend/routes/auth'));
 app.use('/api/admin',    require('./backend/routes/admin'));
 app.use('/api/admin/ai', require('./backend/routes/aiImport')); // AI PDF-to-Test import — admin-only, see backend/routes/aiImport.js
@@ -174,6 +186,31 @@ app.get('/api/public/ad-images', async (req,res) => {
     res.json(await AdImage.find({ showOnHome:true }).select('imageData title redirectUrl description').sort({ createdAt:-1 }));
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
+
+// Shared by '/' (catch-all below) and '/reset-password' — both pages need
+// the Firebase client SDK's config (apiKey, authDomain, etc.) injected
+// server-side from env vars, since it's not safe/practical to hardcode
+// secrets-adjacent config into a static file.
+function renderWithFirebaseConfig(req, res, fileName) {
+  const firebaseConfig = {
+    apiKey:            process.env.FIREBASE_API_KEY             || '',
+    authDomain:        process.env.FIREBASE_AUTH_DOMAIN         || '',
+    projectId:         process.env.FIREBASE_PROJECT_ID          || '',
+    storageBucket:     process.env.FIREBASE_STORAGE_BUCKET      || '',
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+    appId:             process.env.FIREBASE_APP_ID              || '',
+  };
+  const fs = require('fs');
+  let html = fs.readFileSync(path.join(__dirname,'frontend',fileName),'utf8');
+  const fbCfg = JSON.stringify(firebaseConfig);
+  const firebaseScripts =
+    '<script src="/js/firebase-app-compat.js"></script>' +
+    '<script src="/js/firebase-auth-compat.js"></script>' +
+    '<script>try{var __fbApp=firebase.initializeApp(' + fbCfg + ');window._firebaseAuth=firebase.auth(__fbApp);}catch(e){console.error("Firebase init failed:",e);}</script>';
+  html = html.replace('<script type="module">/* FIREBASE_CONFIG_PLACEHOLDER */</script>', firebaseScripts);
+  res.setHeader('Content-Type','text/html');
+  res.send(html);
+}
 
 app.get('*', async (req,res) => {
   if (path.extname(req.path)&&path.extname(req.path)!=='.html') return res.status(404).json({ error:'Not found' });

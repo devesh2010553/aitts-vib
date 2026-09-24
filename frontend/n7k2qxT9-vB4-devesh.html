@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devesh Sharma — notes on this platform</title>
+<!-- Deliberately unlisted: no sitemap entry, no internal link, no robots.txt
+     mention (that would publish the slug). This tag is defense in depth for
+     the rare crawler that reaches it some other way. -->
+<meta name="robots" content="noindex, nofollow, noarchive">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2F3EF;
+    --panel:#FFFFFF;
+    --ink:#1B2430;
+    --ink-soft:#4A5568;
+    --rule:#D8DAD3;
+    --accent:#A9752B;
+    --accent-soft:#F3E8D6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Source Serif 4',Georgia,serif;
+    font-size:17px;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:660px;margin:0 auto;padding:64px 24px 96px}
+  header{margin-bottom:40px}
+  .name{
+    font-size:38px;
+    font-weight:600;
+    letter-spacing:-0.01em;
+    margin:0 0 4px;
+  }
+  .role{font-size:17px;color:var(--ink-soft);margin:0 0 18px;font-style:italic}
+  .rule{border:none;border-top:1px solid var(--rule);margin:0 0 26px}
+
+  .intro-row{display:flex;gap:22px;align-items:flex-start}
+  .profile-photo{
+    display:none;
+    width:92px;height:92px;
+    border-radius:6px;
+    object-fit:cover;
+    border:1px solid var(--rule);
+    flex-shrink:0;
+  }
+  .lede{font-size:19px;line-height:1.7;color:var(--ink);margin:0}
+  .lede em{font-style:italic;color:var(--accent)}
+  @media (max-width:480px){ .intro-row{flex-direction:column} }
+
+  section{margin-top:48px}
+  h2{
+    font-size:15px;
+    font-style:italic;
+    font-weight:400;
+    color:var(--ink-soft);
+    margin:0 0 16px;
+    padding-bottom:8px;
+    border-bottom:1px solid var(--rule);
+  }
+  p{margin:0 0 16px}
+  p:last-child{margin-bottom:0}
+
+  .ledger{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:1px;
+    background:var(--rule);
+    border:1px solid var(--rule);
+    border-radius:2px;
+    overflow:hidden;
+  }
+  .ledger-cell{background:var(--panel);padding:18px 14px;text-align:center}
+  .ledger-num{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:26px;
+    font-weight:600;
+    color:var(--ink);
+    line-height:1;
+  }
+  .ledger-label{
+    font-size:12px;
+    color:var(--ink-soft);
+    margin-top:8px;
+    font-family:'Source Serif 4',serif;
+    font-style:italic;
+  }
+  .ledger-note{font-size:12px;color:var(--ink-soft);margin-top:10px}
+  .ledger-note .dot{
+    display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:var(--accent);margin-right:6px;position:relative;top:-1px;
+  }
+
+  .build{margin-bottom:26px}
+  .build:last-child{margin-bottom:0}
+  .build h3{
+    font-size:17px;
+    font-weight:600;
+    margin:0 0 6px;
+  }
+  .build p{color:var(--ink-soft);font-size:16px}
+
+  .exhibit{margin-top:8px}
+  .exhibit img{
+    width:100%;
+    display:block;
+    border:1px solid var(--rule);
+    border-radius:2px;
+  }
+  .exhibit-cap{font-size:13px;color:var(--ink-soft);font-style:italic;margin-top:8px}
+
+  .other-list{margin:0;padding:0;list-style:none}
+  .other-list li{padding:10px 0;border-bottom:1px solid var(--rule)}
+  .other-list li:last-child{border-bottom:none}
+  .other-list b{font-weight:600}
+  .other-list span{color:var(--ink-soft);font-size:15px}
+
+  footer{
+    margin-top:64px;
+    padding-top:22px;
+    border-top:1px solid var(--rule);
+    font-size:14px;
+    color:var(--ink-soft);
+  }
+  a{color:var(--accent)}
+
+  @media (max-width:480px){
+    .name{font-size:31px}
+    .lede{font-size:17px}
+    .ledger{grid-template-columns:1fr}
+    .wrap{padding:44px 20px 72px}
+  }
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+
+  /* --- upload mode: reachable only via #admin?upload-image, never linked --- */
+  #upload-view{display:none;max-width:420px}
+  #upload-view h2{border:none;font-size:22px;font-style:normal;color:var(--ink);margin-bottom:20px}
+  #upload-view .fg{margin-bottom:22px}
+  #upload-view label{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:6px}
+  #upload-view input[type=password],#upload-view input[type=file]{
+    width:100%;font-family:inherit;font-size:14px;padding:8px 0;border:none;border-bottom:1px solid var(--rule);background:transparent;
+  }
+  #upload-view input[type=password]{padding:8px 10px;border:1px solid var(--rule);border-radius:3px}
+  #upload-view button{
+    margin-top:10px;font-family:inherit;font-size:14px;padding:8px 16px;
+    background:var(--ink);color:#fff;border:none;border-radius:3px;cursor:pointer;
+  }
+  #upload-view button:hover{background:var(--accent)}
+  #upload-view .cur-thumb{display:none;max-height:90px;border-radius:4px;border:1px solid var(--rule);margin-bottom:10px}
+  #upload-status{font-size:13px;color:var(--ink-soft);margin-top:18px}
+</style>
+</head>
+<body>
+
+<div class="wrap" id="normal-view">
+
+  <header>
+    <p class="name">Devesh Sharma</p>
+    <p class="role">Full-stack developer — Agra, Uttar Pradesh, India 282007</p>
+    <hr class="rule">
+    <div class="intro-row">
+      <img id="profile-photo" class="profile-photo" alt="Devesh Sharma">
+      <p class="lede">Hi — I'm Devesh. I designed, built, and now run the platform this page is quietly tucked inside of, along with a couple of other production systems I'll walk through below. If you're reading this, someone sent you a link directly <em>— this page isn't linked from anywhere on the site itself.</em></p>
+    </div>
+  </header>
+
+  <section id="metrics-section" style="display:none">
+    <h2>What's actually running right now</h2>
+    <div class="ledger">
+      <div class="ledger-cell"><div class="ledger-num" id="m-students">—</div><div class="ledger-label">registered students</div></div>
+      <div class="ledger-cell"><div class="ledger-num" id="m-tests">—</div><div class="ledger-label">tests published</div></div>
+      <div class="ledger-cell"><div class="ledger-num" id="m-attempts">—</div><div class="ledger-label">tests submitted</div></div>
+    </div>
+    <p class="ledger-note"><span class="dot"></span>Live numbers, read from the same database the app itself uses — not a snapshot.</p>
+  </section>
+
+  <section>
+    <h2>What I built</h2>
+    <div class="build">
+      <h3>The exam platform (AITTS, for Vibrant Academy)</h3>
+      <p>A topic-wise test series for JEE aspirants: registration, timed exams, an all-India leaderboard, and an admin console — built to survive several hundred students hitting submit within the same few minutes, which is a very different engineering problem than most CRUD apps. It's sized for 500 concurrent test-takers today, moving toward 750–1000+, running on a two-core cloud instance behind Nginx.</p>
+    </div>
+    <div class="build">
+      <h3>PDF-to-test pipeline</h3>
+      <p>Coaching institutes hand me question papers as PDFs, not structured data. I built an extraction pipeline that reads the text layer, rasterizes pages, and pulls out embedded diagrams and tables locally first — only the extracted content, never the raw file, gets passed to an AI step that turns it into structured, gradable questions. Cuts what used to be hours of manual entry per test down to a review pass.</p>
+    </div>
+    <div class="build">
+      <h3>Anti-cheating system</h3>
+      <p>Exams run in enforced fullscreen; the client watches for tab switches, lost window focus, and fullscreen exits, and logs each one as a violation in real time. Three violations auto-submits the exam and pushes a live alert straight to the admin dashboard over a websocket, while progress and violation counts survive a refresh so a genuine accidental exit doesn't cost a student their answers.</p>
+    </div>
+    <div class="build">
+      <h3>Real-time infrastructure</h3>
+      <p>Live leaderboards, moderated exam-day chat, and push notifications all run over Socket.IO. Underneath, student, test, and result data live on DynamoDB rather than MongoDB specifically because it holds up better under the bursty read/write pattern of an exam window, after I hit the limits of what a single-instance MongoDB setup could take under load.</p>
+    </div>
+  </section>
+
+  <section id="exhibit-section" style="display:none">
+    <h2>Organic reach</h2>
+    <div class="exhibit">
+      <img id="exhibit-img" src="" alt="Google Search Console — clicks per month">
+      <p class="exhibit-cap">Google Search Console, clicks per month — no paid acquisition, no marketing budget.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Elsewhere</h2>
+    <ul class="other-list">
+      <li><b>Brajwasi Travels</b> — <span>booking, a driver portal, and live GPS tracking for a family-run travel business.</span></li>
+      <li><b>SellKaro</b> — <span>a full-stack classifieds marketplace.</span></li>
+      <li><b>Jarvis OS</b> — <span>a personal AI system running fully local model inference, no cloud dependency.</span></li>
+    </ul>
+  </section>
+
+  <footer>
+    I'm glad to walk through any part of this in more detail — the code, the architecture decisions, or the numbers above.
+  </footer>
+
+</div>
+
+<!-- Upload mode — only shown for the URL fragment #admin?upload-image, never
+     linked or referenced elsewhere. Fragments never leave the browser (not
+     sent to the server, not logged), so this toggle itself is invisible
+     server-side; the actual write is still gated server-side by
+     ABOUT_PAGE_UPLOAD_KEY (backend/routes/aboutPage.js), a secret separate
+     from the admin panel's login. -->
+<div class="wrap" id="upload-view">
+  <h2>Update about-page images</h2>
+  <div class="fg">
+    <label>Upload key</label>
+    <input type="password" id="upload-key" placeholder="key">
+  </div>
+
+  <div class="fg">
+    <label>Profile photo (shown under "Hi, I'm Devesh")</label>
+    <img id="cur-profile" class="cur-thumb" alt="">
+    <input type="file" id="file-profile" accept="image/*">
+    <button onclick="doUpload('profile')">Upload</button>
+  </div>
+
+  <div class="fg">
+    <label>Search Console screenshot</label>
+    <img id="cur-sc" class="cur-thumb" alt="">
+    <input type="file" id="file-sc" accept="image/*">
+    <button onclick="doUpload('searchconsole')">Upload</button>
+  </div>
+
+  <p id="upload-status"></p>
+</div>
+
+<script>
+(function(){
+  function fmt(n){ return (typeof n === 'number') ? n.toLocaleString('en-IN') : '—'; }
+
+  function initNormalView(){
+    fetch('/api/admin/stats').then(function(r){ return r.json(); }).then(function(d){
+      if (d && typeof d.totalStudents === 'number') {
+        document.getElementById('m-students').textContent = fmt(d.totalStudents);
+        document.getElementById('m-tests').textContent     = fmt(d.totalTests);
+        document.getElementById('m-attempts').textContent  = fmt(d.totalAttempts);
+        document.getElementById('metrics-section').style.display = '';
+      }
+    }).catch(function(){});
+
+    fetch('/api/about-page/images').then(function(r){ return r.json(); }).then(function(d){
+      if (!d) return;
+      if (d.profileUrl) {
+        var p = document.getElementById('profile-photo');
+        p.src = d.profileUrl; p.style.display = 'block';
+      }
+      if (d.searchConsoleUrl) {
+        document.getElementById('exhibit-img').src = d.searchConsoleUrl;
+        document.getElementById('exhibit-section').style.display = '';
+      }
+    }).catch(function(){});
+  }
+
+  function loadCurrentThumbs(){
+    fetch('/api/about-page/images').then(function(r){ return r.json(); }).then(function(d){
+      if (!d) return;
+      var cp = document.getElementById('cur-profile'), cs = document.getElementById('cur-sc');
+      if (d.profileUrl)       { cp.src = d.profileUrl; cp.style.display = 'block'; }
+      if (d.searchConsoleUrl) { cs.src = d.searchConsoleUrl; cs.style.display = 'block'; }
+    }).catch(function(){});
+  }
+
+  window.doUpload = function(type){
+    var key = document.getElementById('upload-key').value;
+    var fileInput = document.getElementById(type === 'profile' ? 'file-profile' : 'file-sc');
+    var status = document.getElementById('upload-status');
+    if (!fileInput.files || !fileInput.files[0]) { status.textContent = 'Select a file first.'; return; }
+    if (!key) { status.textContent = 'Enter the upload key first.'; return; }
+    localStorage.setItem('aboutPageUploadKey', key);
+    var fd = new FormData();
+    fd.append('image', fileInput.files[0]);
+    fd.append('type', type);
+    status.textContent = 'Uploading...';
+    fetch('/api/about-page/upload', { method:'POST', headers:{ 'x-upload-key':key }, body: fd })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) { status.textContent = d.error; return; }
+        status.textContent = 'Uploaded.';
+        fileInput.value = '';
+        loadCurrentThumbs();
+      })
+      .catch(function(){ status.textContent = 'Upload failed.'; });
+  };
+
+  function initUploadMode(){
+    document.getElementById('normal-view').style.display = 'none';
+    document.getElementById('upload-view').style.display = 'block';
+    var saved = localStorage.getItem('aboutPageUploadKey');
+    if (saved) document.getElementById('upload-key').value = saved;
+    loadCurrentThumbs();
+  }
+
+  if (location.hash.indexOf('#admin') === 0) initUploadMode();
+  else initNormalView();
+})();
+</script>
+</body>
+</html>

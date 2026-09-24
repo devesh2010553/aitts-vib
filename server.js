@@ -57,11 +57,14 @@ app.use((req,res,next) => { res.setHeader('X-Content-Type-Options','nosniff'); r
 // frontend/*.html): root path keeps its trailing slash (https://aitts.in/),
 // every other path has NO trailing slash (https://aitts.in/register).
 const CANONICAL_HOST = 'aitts.in';
+const ABOUT_PAGE_PATH = process.env.ABOUT_PAGE_PATH || '/n7k2qxT9-vB4-devesh';
+
+const ABOUT_PAGE_FILE = 'n7k2qxT9-vB4-devesh.html';
 // Pages that also exist as a raw static file under their real .html name
 // (express.static below serves the whole frontend/ dir) get redirected to
 // the clean route already registered for them further down, so there is
 // only one live, indexable URL per page instead of two.
-const HTML_FILE_REDIRECTS = { '/adminvibacdonlineaiits.html':'/adminvibacdonlineaiits', '/ad856eyqafggg.html':'/ad856eyqafggg', '/index.html':'/' };
+const HTML_FILE_REDIRECTS = { '/adminvibacdonlineaiits.html':'/adminvibacdonlineaiits', '/ad856eyqafggg.html':'/ad856eyqafggg', '/index.html':'/', [ABOUT_PAGE_FILE.startsWith('/')?ABOUT_PAGE_FILE:'/'+ABOUT_PAGE_FILE]:ABOUT_PAGE_PATH };
 app.use((req,res,next) => {
   if (req.path.startsWith('/api/')) return next(); // never redirect API calls — breaks CORS/preflight expectations
   const reqHost = (req.headers.host || '').toLowerCase();
@@ -157,6 +160,12 @@ app.get('/sitemap.xml', (_,res) => {
 
 app.get('/adminvibacdonlineaiits', (_,res) => res.sendFile(path.join(__dirname,'frontend','adminvibacdonlineaiits.html')));
 app.get('/ad856eyqafggg',           (_,res) => res.sendFile(path.join(__dirname,'frontend','ad856eyqafggg.html')));
+app.get(ABOUT_PAGE_PATH, (_,res) => {
+  // Defense in depth for the rare case a crawler ever gets handed the link
+  // some other way (it still isn't referenced from anywhere in this app).
+  res.setHeader('X-Robots-Tag','noindex, nofollow, noarchive');
+  res.sendFile(path.join(__dirname,'frontend',ABOUT_PAGE_FILE));
+});
 
 // Password-reset landing page — this is what Firebase's email "reset your
 // password" link points to (see Firebase Console > Authentication >
@@ -186,6 +195,12 @@ app.get('/api/public/ad-images', async (req,res) => {
     res.json(await AdImage.find({ showOnHome:true }).select('imageData title redirectUrl description').sort({ createdAt:-1 }));
   } catch(err) { res.status(500).json({ error:err.message }); }
 });
+
+// Deliberately separate from /api/admin — the about page's own upload mode
+// (ABOUT_PAGE_PATH + '#admin?upload-image') is protected by its own shared
+// key (ABOUT_PAGE_UPLOAD_KEY), not the student/admin JWT system. See
+// backend/routes/aboutPage.js.
+app.use('/api/about-page', require('./backend/routes/aboutPage'));
 
 // Shared by '/' (catch-all below) and '/reset-password' — both pages need
 // the Firebase client SDK's config (apiKey, authDomain, etc.) injected

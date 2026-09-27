@@ -3,6 +3,7 @@ const router  = express.Router();
 const Result  = require('../dynamo/resultModel'); // was: const Result = require('../models/Result');
 const Test    = require('../dynamo/testModel');   // was: const Test = require('../models/Test');
 const User    = require('../dynamo/userModel');   // was: const UserProfile = require('../models/UserProfile');
+const { gradeAnswers } = require('../utils/grading');
 const { invalidate } = require('../utils/leaderboardCache');
 const { scheduleBroadcast } = require('../utils/rankingBroadcast');
 const { authenticateStudent } = require('../middleware/auth');
@@ -31,31 +32,11 @@ router.post('/submit', authenticateStudent, async (req, res) => {
       return res.status(403).json({ error: 'This test is not available for your class/batch' });
     }
 
-    let obtainedMarks=0, correctAnswers=0, wrongAnswers=0, notAttempted=0;
-    const processedAnswers = [];
-    for (const q of test.questions) {
-      const ua = (answers||[]).find(a => a.questionId === q.questionId);
-      if (q.isMultiChoice) {
-        const sel = (ua&&ua.selectedOptions)||[];
-        const cor = q.options.reduce((a,o,i)=>{ if(o.isCorrect)a.push(i); return a; },[]);
-        if (!sel.length) { notAttempted++; processedAnswers.push({ questionId:q.questionId, selectedOption:-1, selectedOptions:[], isCorrect:false, marksAwarded:0 }); }
-        else {
-          const ok = cor.every(i=>sel.includes(i)) && sel.every(i=>cor.includes(i));
-          const ma = ok ? q.marks : -(q.negativeMarks||0);
-          if(ok) correctAnswers++; else wrongAnswers++;
-          obtainedMarks += ma;
-          processedAnswers.push({ questionId:q.questionId, selectedOption:-1, selectedOptions:sel, isCorrect:ok, marksAwarded:ma });
-        }
-      } else {
-        const s = (ua!=null&&ua.selectedOption!=null) ? ua.selectedOption : -1;
-        if (s===-1) { notAttempted++; processedAnswers.push({ questionId:q.questionId, selectedOption:-1, isCorrect:false, marksAwarded:0 }); }
-        else {
-          const opt = q.options[s];
-          if (opt&&opt.isCorrect) { correctAnswers++; obtainedMarks+=q.marks; processedAnswers.push({ questionId:q.questionId, selectedOption:s, isCorrect:true, marksAwarded:q.marks }); }
-          else { wrongAnswers++; const neg=q.negativeMarks||0; obtainedMarks-=neg; processedAnswers.push({ questionId:q.questionId, selectedOption:s, isCorrect:false, marksAwarded:-neg }); }
-        }
-      }
-    }
+    // Grading logic (including the bonus-question rule) lives in
+    // utils/grading.js, shared with the admin regrade action — see that
+    // file for why.
+    let obtainedMarks=0, correctAnswers=0, wrongAnswers=0, notAttempted=0, processedAnswers=[];
+    ({ processedAnswers, obtainedMarks, correctAnswers, wrongAnswers, notAttempted } = gradeAnswers(test.questions, answers));
     // Negative marking is allowed to carry through to the final score —
     // previously clamped to a floor of 0 here, so a student who, say,
     // scored +5 from correct answers and -6 from negative marking on wrong

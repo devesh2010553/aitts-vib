@@ -316,6 +316,13 @@ textarea{resize:vertical}
           </div>
           <p style="font-size:11px;color:#888;margin:0">Loads students who attempted the test selected above.</p>
         </div>
+
+        <!-- Bonus questions: regrade -->
+        <div style="background:#fff;border:1.5px solid #e2c98a;border-radius:8px;padding:12px 14px;margin-top:12px">
+          <p style="font-weight:700;font-size:13px;color:#b7791f;margin-bottom:8px"><i class="fas fa-star"></i> Bonus questions (same test as above)</p>
+          <p style="font-size:11px;color:#888;margin:0 0 10px">Tick "Bonus Question" on one or more questions in the test's Edit screen (marks section, next to Multi-Choice), Save, then hit Regrade — every student who attempted that question gets full marks for it, right or wrong. Skipping it still counts as not attempted.</p>
+          <button class="btn btn-outline btn-sm" onclick="regradeBonusQuestions()"><i class="fas fa-sync"></i> Regrade using selected test's current bonus questions</button>
+        </div>
       </div>
     </div>
 
@@ -694,6 +701,17 @@ function applyTestBonus(){
   }).catch(function(err){toast(err.message,'error');});
 }
 
+function regradeBonusQuestions(){
+  var sel=document.getElementById('bonus-test-sel');
+  var testId=sel&&sel.value;
+  if(!testId){toast('Select a test first','error');return;}
+  var testName=sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].text||'';
+  if(!confirm('Re-grade every already-submitted result for "'+testName+'" using its current Bonus Question flags? This rewrites stored scores/ranks for that test.'))return;
+  api('/api/admin/tests/'+testId+'/regrade',{method:'POST'}).then(function(data){
+    toast(data.message||'Regraded','success');
+  }).catch(function(err){toast(err.message,'error');});
+}
+
 function applyStudentBonus(){
   var testSel=document.getElementById('bonus-test-sel');
   var studentSel=document.getElementById('bonus-student-sel');
@@ -802,6 +820,7 @@ function addQ(data){
   [2,3,4,5].forEach(function(v){html+='<option value="'+v+'"'+(optN===v?' selected':'')+'>'+v+' Options</option>';});
   html+='</select></div>';
   html+='<div class="fg"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="qmc-'+idx+'" style="width:auto;accent-color:#b8860b;cursor:pointer"'+(isMulti?' checked':'')+' onchange="onMultiChange('+idx+',this.checked)"> Multi-Choice</label></div>';
+  html+='<div class="fg"><label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Anyone who attempts this question gets full marks, right or wrong"><input type="checkbox" id="qb-'+idx+'" style="width:auto;accent-color:#b8860b;cursor:pointer"'+((data&&data.isBonus)?' checked':'')+'> Bonus Question</label></div>';
   html+='</div>';
   // Options
   html+='<div class="fg"><label id="opts-lbl-'+idx+'">Options <span style="font-weight:400;font-size:11px;color:#888">'+(isMulti?'(check ALL correct)':'(select ONE correct)')+'</span></label>';
@@ -900,6 +919,7 @@ function collectTest(publish){
     var exp=((document.getElementById('qe-'+idx)||{}).value||'').trim();
     var nOpts=parseInt((document.getElementById('qo-'+idx)||{}).value)||4;
     var isMulti=(document.getElementById('qmc-'+idx)||{}).checked||false;
+    var isBonus=(document.getElementById('qb-'+idx)||{}).checked||false;
     var opts=[];var hasCorrect=false;var correctOpts=[];
     for(var oi=0;oi<nOpts;oi++){
       var t2=((document.getElementById('qot-'+idx+'-'+oi)||{}).value||'').trim();
@@ -911,7 +931,7 @@ function collectTest(publish){
     }
     if(!hasCorrect){toast('Q'+(qi+1)+': Select the correct answer','error');throw new Error('validation');}
     if(opts.length<2){toast('Q'+(qi+1)+': Add at least 2 options','error');throw new Error('validation');}
-    qs.push({questionId:_qIds[idx]||undefined,questionText:text,questionImage:qImg||undefined,options:opts,isMultiChoice:isMulti,correctOptions:correctOpts,marks:marks,negativeMarks:neg,explanation:exp});
+    qs.push({questionId:_qIds[idx]||undefined,questionText:text,questionImage:qImg||undefined,options:opts,isMultiChoice:isMulti,correctOptions:correctOpts,marks:marks,negativeMarks:neg,isBonus:isBonus,explanation:exp});
   }
   var selImgs=[];
   document.querySelectorAll('input[name="ad-img-sel"]:checked').forEach(function(cb){selImgs.push(cb.value);});

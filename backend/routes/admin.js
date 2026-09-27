@@ -168,6 +168,23 @@ router.post('/results/:userId/:testId/bonus', async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Bonus questions: mark specific question(s) in a test as bonus (full
+// marks to anyone who attempted it) and re-grade already-submitted results
+// to match. Setting the isBonus flag itself happens via the normal
+// PUT /tests/:id save (it's just another per-question field, see
+// testModel.js normalizeQuestions) — this endpoint is only the explicit
+// "apply that to results already sitting in the table" step, same
+// deliberate-action philosophy as the bonus-marks routes above.
+router.post('/tests/:id/regrade', async (req, res) => {
+  try {
+    const test = await Test.getById(req.params.id);
+    if (!test) return res.status(404).json({ error: 'Test not found' });
+    const { count, batches } = await Result.regradeTest(test);
+    invalidate({ testId: req.params.id });
+    batches.forEach(function(b){ invalidate({ testId: req.params.id, batch: b }); });
+    res.json({ message: 'Re-graded ' + count + ' submitted result(s) using this test\'s current bonus questions', count });
+  } catch(err) { res.status(500).json({ error: err.message }); }
+});
 // Delete results for a test by batch
 // DELETE from DynamoDB — results are no longer archived anywhere first
 // (Google Sheets integration removed entirely; nothing writes student data

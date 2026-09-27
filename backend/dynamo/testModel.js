@@ -63,6 +63,13 @@ function normalizeQuestions(questions) {
     correctOptions: q.correctOptions || [],
     marks: typeof q.marks === 'number' ? q.marks : 4,
     negativeMarks: typeof q.negativeMarks === 'number' ? q.negativeMarks : 1,
+    // Bonus question: anyone who attempts it gets full `marks` regardless of
+    // correctness (see utils/grading.js). Set/cleared via the normal test
+    // editor like any other question field; the admin still has to press
+    // "Regrade" (routes/admin.js POST /tests/:id/regrade) to apply a
+    // post-hoc change to already-submitted results — saving the test alone
+    // never silently rewrites past scores.
+    isBonus: !!q.isBonus,
     explanation: q.explanation || '',
   }));
 }

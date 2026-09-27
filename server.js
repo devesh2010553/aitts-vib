@@ -57,8 +57,19 @@ app.use((req,res,next) => { res.setHeader('X-Content-Type-Options','nosniff'); r
 // frontend/*.html): root path keeps its trailing slash (https://aitts.in/),
 // every other path has NO trailing slash (https://aitts.in/register).
 const CANONICAL_HOST = 'aitts.in';
+// Private, unlinked "about the builder" page — meant to be shared directly
+// (e.g. with a university admissions officer) with people who already have
+// the exact link, never through site navigation, sitemap.xml, or robots.txt
+// (adding it to robots.txt would publish the very slug it's trying to keep
+// obscure). This is obscurity, not real access control — anyone who has the
+// URL can view it, same as the adminvibacdonlineaiits/ad856eyqafggg pages
+// above. Override ABOUT_PAGE_PATH in the environment to rotate the link
+// without a code change if it's ever shared wider than intended; must start
+// with '/' and should be at least as long/random as the default.
 const ABOUT_PAGE_PATH = process.env.ABOUT_PAGE_PATH || '/n7k2qxT9-vB4-devesh';
-
+// Filename of the matching static file under frontend/ — kept equally
+// obscure (not "about-devesh.html") so that guessing or crawling the static
+// file directly isn't a shortcut around ABOUT_PAGE_PATH.
 const ABOUT_PAGE_FILE = 'n7k2qxT9-vB4-devesh.html';
 // Pages that also exist as a raw static file under their real .html name
 // (express.static below serves the whole frontend/ dir) get redirected to

@@ -373,6 +373,66 @@ async function applyBonusToOne(userId, testId, bonusMarks) {
   return r.Attributes;
 }
 
+// Re-grades every already-submitted result for a test against its CURRENT
+// question definitions — needed because gradeAnswers() only runs at
+// submit-time; flagging a question isBonus afterward (or fixing its marks)
+// has no effect on results already sitting in the table until this runs.
+// Explicit, admin-triggered action (routes/admin.js POST
+// /tests/:id/regrade) rather than an automatic side-effect of saving test
+// edits — same "edits don't silently rewrite past scores" principle the
+// whole-test/per-student bonus actions already follow.
+//
+// Two passes, not one, and deliberately not interleaved:
+//   1. Recompute each result's answers/obtainedMarks/correctAnswers/etc.
+//      from its OWN stored `answers` (what the student actually picked —
+//      never touched) against test.questions as they stand right now.
+//      Whatever test-wide or per-student bonus marks (result.bonusMarks)
+//      were already layered on top of a result are re-added unchanged on
+//      top of the freshly recomputed base — this action only touches the
+//      per-question scoring, not those separately-tracked adjustments.
+//   2. Only once every result's obtainedMarks for this test is final does
+//      it become safe to recompute rank/batchRank (computeRanks() reads
+//      other students' CURRENT obtainedMarks via the TestIndex GSI, so
+//      doing this per-result during pass 1 would rank against a mix of
+//      old and new scores depending on write order).
+// Bounded to one test's participants via the TestIndex GSI (queryByTest),
+// same as applyBonusToTest — not a full table scan — and, like that
+// existing action and the admin recompute-user-stats endpoint, this is a
+// deliberate, infrequent admin action, not something on any student-facing
+// hot path.
+async function regradeTest(test) {
+  const { gradeAnswers } = require('../utils/grading');
+  const testBonus = test.bonusMarks || 0;
+  const results = (await queryByTest(test.testId)).filter(function(r){ return !r.inProgress; });
+
+  for (const r of results) {
+    const g = gradeAnswers(test.questions, r.answers);
+    const finalMarks = g.obtainedMarks + testBonus + (r.bonusMarks || 0);
+    await db.send(new UpdateCommand({
+      TableName: TABLES.RESULTS, Key: { userId: r.userId, testId: r.testId },
+      UpdateExpression: 'SET answers = :a, obtainedMarks = :m, correctAnswers = :c, wrongAnswers = :w, notAttempted = :n, updatedAt = :now',
+      ExpressionAttributeValues: {
+        ':a': g.processedAnswers, ':m': finalMarks, ':c': g.correctAnswers,
+        ':w': g.wrongAnswers, ':n': g.notAttempted, ':now': new Date().toISOString(),
+      },
+    }));
+  }
+
+  const batches = Array.from(new Set(results.map(function(r){ return r.batch; }).filter(Boolean)));
+  const refreshed = (await queryByTest(test.testId)).filter(function(r){ return !r.inProgress; });
+  for (const r of refreshed) {
+    const { overallRank, batchRank } = await computeRanks(test.testId, r.batch, r.obtainedMarks, r.timeTaken);
+    await db.send(new UpdateCommand({
+      TableName: TABLES.RESULTS, Key: { userId: r.userId, testId: r.testId },
+      UpdateExpression: 'SET #rank = :r, batchRank = :br',
+      ExpressionAttributeNames: { '#rank': 'rank' },
+      ExpressionAttributeValues: { ':r': overallRank, ':br': batchRank },
+    }));
+  }
+
+  return { count: results.length, batches: batches };
+}
+
 async function deleteByTest(testId, batch) {
   const results = await queryByTest(testId, batch && batch !== 'all' ? { batch: batch } : {});
   const chunks = [];
@@ -415,6 +475,7 @@ module.exports = {
   getByUserAndTest: getByUserAndTest, queryByUser: queryByUser, queryByTest: queryByTest, queryByBatch: queryByBatch,
   getTopN: getTopN, countForTest: countForTest,
   saveProgress: saveProgress, submit: submit, computeRanks: computeRanks, reconcileRank: reconcileRank,
-  applyBonusToTest: applyBonusToTest, applyBonusToOne: applyBonusToOne, deleteByTest: deleteByTest, deleteAllByUser: deleteAllByUser,
+  applyBonusToTest: applyBonusToTest, applyBonusToOne: applyBonusToOne, regradeTest: regradeTest,
+  deleteByTest: deleteByTest, deleteAllByUser: deleteAllByUser,
   countSubmitted: countSubmitted,
 };

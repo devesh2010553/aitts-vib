@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>AITTS Admin  Vibrant Academy</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="canonical" href="https://aitts.in/adminvibacdonlineaiits">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3517811725655802" crossorigin="anonymous"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{--gold:#b8860b;--gold-light:#d4a017;--gold-pale:#fdf6e3;--gold-border:rgba(184,134,11,0.25);--gold-glow:rgba(184,134,11,0.12);--bg:#fafaf8;--border:#e5dfd0;--text:#1a1a1a;--text-sec:#555550;--text-muted:#888880;--red:#c53030;--red-light:rgba(197,48,48,0.1);--green:#276749;--green-light:rgba(39,103,73,0.1);--radius:12px;--radius-sm:8px;--shadow:0 2px 16px rgba(0,0,0,0.08);--shadow-md:0 4px 24px rgba(0,0,0,0.12);--transition:0.2s cubic-bezier(0.4,0,0.2,1);--font:"DM Sans",sans-serif;--font-display:"Playfair Display",serif;--font-mono:"JetBrains Mono",monospace}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+input,textarea,select{width:100%;padding:10px 14px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:#fff;color:var(--text);font-family:var(--font);font-size:14px;transition:var(--transition);outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}
+textarea{resize:vertical}
+.hidden{display:none!important}
+.mt-8{margin-top:8px}.mt-12{margin-top:12px}.mt-16{margin-top:16px}
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 17px;border-radius:var(--radius-sm);font-family:var(--font);font-weight:600;font-size:14px;cursor:pointer;border:none;transition:var(--transition);white-space:nowrap;line-height:1}
+.btn-gold{background:linear-gradient(135deg,var(--gold-light),var(--gold));color:#fff}
+.btn-gold:hover:not(:disabled){filter:brightness(1.08);transform:translateY(-1px)}
+.btn-gold:disabled{opacity:0.6;cursor:not-allowed}
+.btn-outline{background:transparent;border:1.5px solid var(--gold);color:var(--gold)}
+.btn-outline:hover{background:var(--gold-glow)}
+.btn-ghost{background:#f0ebe0;color:var(--text-sec);border:1.5px solid var(--border)}
+.btn-red{background:var(--red);color:#fff;border:none}
+.btn-red:hover{filter:brightness(0.92)}
+.btn-sm{padding:7px 12px;font-size:13px}
+.btn-full{width:100%;justify-content:center}
+/* TOAST */
+#toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:11px 16px;font-size:13px;min-width:240px;max-width:340px;display:flex;align-items:center;gap:9px;box-shadow:var(--shadow-md);animation:slideIn 0.3s ease;border-left:4px solid var(--gold);pointer-events:all}
+.toast.success{border-left-color:var(--green)}.toast.error{border-left-color:var(--red)}.toast.info{border-left-color:#2b6cb0}
+@keyframes slideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+/* PAGES */
+.page{display:none;min-height:100vh}.page.active{display:block}
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#1a1a2e,#16213e);padding:24px}
+.login-card{background:#fff;border-radius:var(--radius);padding:40px 36px;width:100%;max-width:380px;box-shadow:var(--shadow-md)}
+.login-logo{font-family:var(--font-display);font-size:42px;font-weight:900;color:var(--gold);text-align:center;margin-bottom:4px}
+.login-sub{text-align:center;color:var(--text-muted);font-size:12px;margin-bottom:28px}
+.shield-icon{font-size:40px;color:var(--gold);text-align:center;margin-bottom:16px}
+.fg{margin-bottom:14px}
+.fg label{display:block;font-size:11px;font-weight:700;color:var(--text-sec);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px}
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:40px}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:15px;padding:0}
+/* NAVBAR */
+.navbar{display:flex;align-items:center;justify-content:space-between;padding:12px 28px;background:#fff;border-bottom:2px solid var(--gold);position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}
+.nav-brand{display:flex;align-items:center;gap:10px}
+.nav-logo{font-family:var(--font-display);font-size:20px;font-weight:900;color:var(--gold)}
+.admin-tag{font-size:10px;font-weight:700;letter-spacing:2px;background:var(--gold);color:#fff;padding:2px 7px;border-radius:4px}
+.nav-links{display:flex;gap:3px}
+.nav-link{padding:7px 12px;border-radius:var(--radius-sm);background:none;border:none;color:var(--text-sec);cursor:pointer;font-family:var(--font);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:5px;transition:var(--transition)}
+.nav-link:hover,.nav-link.active{background:var(--gold-glow);color:var(--gold)}
+/* MOB NAV */
+.mob-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1.5px solid var(--border);padding:5px 0;z-index:200;justify-content:space-around}
+.mob-btn{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:10px;font-family:var(--font);padding:5px 8px;border-radius:var(--radius-sm);transition:var(--transition)}
+.mob-btn i{font-size:17px}
+.mob-btn.active,.mob-btn:hover{color:var(--gold)}
+/* CONTAINER */
+.admin-container{max-width:1200px;margin:0 auto;padding:24px 24px 100px}
+.atab{display:none}.atab.active{display:block}
+.dtab-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.dtab-header h3{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.form-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:18px}
+.fc-title{font-size:12px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;display:flex;align-items:center;gap:7px}
+.form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:12px}
+.ct-form{display:flex;flex-direction:column;gap:18px}
+.form-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+/* STATS CARDS */
+.analytics-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin-bottom:20px}
+.an-card{background:#fff;border:1.5px solid var(--gold-border);border-radius:var(--radius);padding:20px;text-align:center}
+.an-card i{font-size:26px;color:var(--gold);margin-bottom:8px;display:block}
+.an-card span{font-family:var(--font-display);font-size:30px;font-weight:700;color:var(--text);display:block}
+.an-card label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px}
+/* STORAGE BAR */
+.storage-card{background:#fff8ee;border:1.5px solid #f0c040;border-radius:var(--radius);padding:18px;margin-bottom:18px}
+.storage-bar-wrap{height:10px;background:var(--border);border-radius:5px;overflow:hidden;margin:8px 0 4px}
+.storage-bar-fill{height:100%;border-radius:5px;transition:width 0.5s}
+/* TEST ITEMS */
+.skel{background:linear-gradient(90deg,#f0ebe0 25%,#e5dfd0 50%,#f0ebe0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius);height:78px;margin-bottom:8px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+.admin-test-item{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;transition:var(--transition)}
+.admin-test-item:hover{border-color:var(--gold-border)}
+.ati-title{font-size:14px;font-weight:700;margin-bottom:3px}
+.ati-meta{display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--text-muted)}
+.ati-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap}
+.pub-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px}
+.draft-dot{background:var(--text-muted)}
+/* QUESTIONS */
+.qs-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.q-item{background:var(--gold-pale);border:1.5px solid var(--gold-border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.qi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.qi-num{font-size:12px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:1px}
+.qi-body{display:flex;flex-direction:column;gap:10px}
+.qi-marks-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
+.opts-builder{display:flex;flex-direction:column;gap:7px}
+.opt-row{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}
+.opt-row-top{display:flex;align-items:center;gap:8px;width:100%}
+.opt-row-top input[type=text]{flex:1}
+.opt-row-top input[type=checkbox],
+.opt-row-top input[type=radio]{width:16px;height:16px;flex-shrink:0;margin-top:1px;accent-color:var(--gold);cursor:pointer}
+.opt-correct-lbl{font-size:11px;color:var(--text-muted);white-space:nowrap;cursor:pointer}
+.opt-img-preview{max-height:50px;border-radius:4px;border:1px solid var(--border);margin-left:24px;display:block;margin-top:4px}
+.opt-img-preview-wrap{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 8px;margin-left:24px;margin-top:4px}
+.opt-img-preview-wrap img{max-height:42px;border-radius:4px;display:block}
+.opt-img-preview-wrap button{background:var(--red);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.q-attach-bar{display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap}
+.attach-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:6px;border:1.5px dashed var(--gold-border);background:var(--gold-pale);color:var(--gold);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);transition:var(--transition)}
+.attach-btn:hover{border-color:var(--gold);background:var(--gold-glow)}
+.attach-btn input[type=file]{display:none}
+.q-img-preview-wrap{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--border);border-radius:6px;padding:4px 8px}
+.q-img-preview-wrap img{max-height:42px;border-radius:4px;display:block}
+.q-img-preview-wrap button{background:var(--red);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+/* TOGGLES */
+.toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.tog{position:relative;display:inline-block;width:40px;height:21px}
+.tog input{opacity:0;width:0;height:0}
+.tog-sl{position:absolute;inset:0;background:var(--border);border-radius:21px;cursor:pointer;transition:var(--transition)}
+.tog-sl::before{content:"";position:absolute;width:15px;height:15px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:var(--transition)}
+.tog input:checked+.tog-sl{background:var(--gold)}
+.tog input:checked+.tog-sl::before{transform:translateX(19px)}
+/* TABLES */
+.rank-table,.students-table{width:100%;border-collapse:collapse;font-size:12px}
+.rank-table th,.students-table th{background:#f0ebe0;color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:1px;padding:9px 12px;text-align:left;white-space:nowrap;border-bottom:1.5px solid var(--border)}
+.rank-table td,.students-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text)}
+.students-table td{white-space:nowrap}
+.rank-table tr:hover td,.students-table tr:hover td{background:var(--gold-pale)}
+.marks-cell{font-family:var(--font-mono);font-weight:600;color:var(--gold)}
+.count-pill{background:var(--gold);color:#fff;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px}
+.search-row{margin-bottom:12px}
+/* CHEAT */
+.cheat-item{background:#fff;border:1.5px solid var(--red);border-radius:var(--radius);padding:14px 18px;margin-bottom:8px}
+.cheat-item h4{color:var(--red);font-size:13px;margin-bottom:3px}
+.cheat-item p{font-size:11px;color:var(--text-muted);margin-bottom:2px}
+/* BATCH FILTER */
+.batch-filter-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.bfbtn{padding:5px 12px;border-radius:999px;border:1.5px solid var(--border);background:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:var(--transition)}
+.bfbtn.active{border-color:var(--gold);background:var(--gold-glow);color:var(--gold)}
+/* IMAGE MANAGER */
+.img-manager-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px;margin-top:14px}
+.img-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:var(--transition)}
+.img-card:hover{border-color:var(--gold-border);box-shadow:var(--shadow)}
+.img-card-img{width:100%;height:120px;object-fit:cover;display:block}
+.img-card-body{padding:9px}
+.img-card-title{font-size:12px;font-weight:700;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.img-card-url{font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px}
+.img-card-badges{display:flex;gap:4px;margin-bottom:7px}
+.img-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:999px}
+.img-badge-home{background:var(--green-light);color:var(--green)}
+.img-badge-hidden{background:var(--red-light);color:var(--red)}
+.img-card-actions{display:flex;gap:5px}
+.img-upload-zone{border:2px dashed var(--gold-border);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;transition:var(--transition);background:var(--gold-pale);margin-bottom:14px}
+.img-upload-zone:hover{border-color:var(--gold);background:var(--gold-glow)}
+/* IMG PICKER */
+.img-picker-wrap{display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:var(--gold-pale);border-radius:8px;border:1.5px dashed var(--gold-border);min-height:56px}
+.img-picker-item{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+.img-picker-item img{width:72px;height:54px;object-fit:cover;border-radius:5px;border:2px solid transparent;transition:var(--transition)}
+.img-picker-item input:checked+img{border-color:var(--gold)}
+.img-picker-item span{font-size:9px;color:var(--text-muted);max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+/* DEL RESULTS */
+.del-results-card{background:#fff8f8;border:1.5px solid rgba(197,48,48,0.25);border-radius:var(--radius);padding:18px;margin-top:18px}
+/* EMAIL TEST */
+.email-test-card{background:#fff8ee;border:1.5px solid #f0c040;border-radius:var(--radius);padding:18px;margin-bottom:16px}
+.setup-steps{background:#fff;border-radius:var(--radius-sm);border:1px solid var(--border);padding:12px;font-size:11px;color:#777;line-height:1.9;margin-top:10px}
+/* AD IMAGE PICKER in test form */
+.ad-img-picker-info{font-size:12px;color:var(--text-muted);margin-top:6px}
+/* RESPONSIVE */
+@media(max-width:768px){
+  .nav-links{display:none}
+  .mob-nav{display:flex}
+  .form-row-2,.qi-marks-row{grid-template-columns:1fr 1fr}
+  .admin-test-item{flex-direction:column;align-items:flex-start}
+  .admin-container{padding:14px 12px 100px}
+  .navbar{padding:10px 14px}
+  .login-card{padding:28px 20px}
+}
+@media(min-width:769px){.mob-nav{display:none!important}}
+</style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<!-- LOGIN PAGE -->
+<div id="page-login" class="page active">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">AITTS</div>
+      <p class="login-sub">Admin Portal  Vibrant Academy</p>
+      <div class="shield-icon"><i class="fas fa-shield-alt"></i></div>
+      <div class="fg"><label>Admin Email</label><input type="email" id="admin-email" placeholder="admin@email.com" onkeydown="if(event.key==='Enter')adminLogin()"></div>
+      <div class="fg">
+        <label>Password</label>
+        <div class="pw-wrap">
+          <input type="password" id="admin-password" placeholder="password" onkeydown="if(event.key==='Enter')adminLogin()">
+          <button type="button" class="pw-toggle" onclick="togglePw('admin-password',this)"><i class="fas fa-eye"></i></button>
+        </div>
+      </div>
+      <button class="btn btn-gold btn-full mt-16" onclick="adminLogin()" id="login-btn"><i class="fas fa-lock-open"></i> Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN DASHBOARD PAGE -->
+<div id="page-admin" class="page">
+  <nav class="navbar">
+    <div class="nav-brand"><div class="nav-logo">AITTS</div><span class="admin-tag">ADMIN</span></div>
+    <div class="nav-links">
+      <button class="nav-link active" onclick="adminTab('tests')"><i class="fas fa-list-alt"></i> Tests</button>
+      <button class="nav-link" onclick="adminTab('create-test')"><i class="fas fa-plus-circle"></i> Create</button>
+      <button class="nav-link" onclick="adminTab('ai-import')"><i class="fas fa-file-pdf"></i> AI Import</button>
+      <button class="nav-link" onclick="adminTab('images')"><i class="fas fa-images"></i> Images</button>
+      <button class="nav-link" onclick="adminTab('announce')"><i class="fas fa-bullhorn"></i> Push</button>
+      <button class="nav-link" onclick="adminTab('students')"><i class="fas fa-users"></i> Students</button>
+      <button class="nav-link" onclick="adminTab('cheating')"><i class="fas fa-exclamation-triangle"></i> Cheating</button>
+      <button class="nav-link" onclick="adminTab('analytics')"><i class="fas fa-chart-pie"></i> Analytics</button>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="adminLogout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+  </nav>
+  <div class="mob-nav">
+    <button class="mob-btn active" onclick="adminTab('tests')"><i class="fas fa-list-alt"></i><span>Tests</span></button>
+    <button class="mob-btn" onclick="adminTab('create-test')"><i class="fas fa-plus"></i><span>Create</span></button>
+    <button class="mob-btn" onclick="adminTab('ai-import')"><i class="fas fa-file-pdf"></i><span>AI Import</span></button>
+    <button class="mob-btn" onclick="adminTab('images')"><i class="fas fa-images"></i><span>Images</span></button>
+    <button class="mob-btn" onclick="adminTab('announce')"><i class="fas fa-bullhorn"></i><span>Push</span></button>
+    <button class="mob-btn" onclick="adminTab('students')"><i class="fas fa-users"></i><span>Students</span></button>
+    <button class="mob-btn" onclick="adminTab('analytics')"><i class="fas fa-chart-pie"></i><span>Stats</span></button>
+  </div>
+
+  <div class="admin-container">
+
+    <!-- TESTS TAB -->
+    <div id="atab-tests" class="atab active">
+      <div class="dtab-header">
+        <h3><i class="fas fa-list-alt" style="color:var(--gold)"></i> Test Management</h3>
+        <button class="btn btn-gold btn-sm" onclick="adminTab('create-test')"><i class="fas fa-plus"></i> New Test</button>
+      </div>
+      <div id="admin-tests-list"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+      <div class="del-results-card">
+        <div class="fc-title" style="color:var(--red);margin-bottom:4px"><i class="fas fa-database"></i> Manage Test Results</div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Select a test and batch, then choose which type of deletion you need.</p>
+
+        <!-- Selectors shared by both buttons -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+          <div class="fg" style="flex:1;min-width:180px;margin:0">
+            <label>Select Test</label>
+            <select id="del-test-sel"><option value=""> Select a test </option></select>
+          </div>
+          <div class="fg" style="margin:0">
+            <label>Batch</label>
+            <select id="del-batch-sel" style="width:130px">
+              <option value="all">All Batches</option>
+              <option value="11">Class 11</option>
+              <option value="12">Class 12</option>
+              <option value="dropper">Dropper</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Permanently deletes these results from the live database —
+             students will no longer see them in "My Results" or the
+             leaderboard. Nothing is archived anywhere first (no Google
+             Sheets integration — student/result data is never written to a
+             Sheet in this app). -->
+        <div style="background:#fff8f8;border:1.5px solid rgba(197,48,48,0.35);border-radius:8px;padding:12px 14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div>
+              <p style="font-weight:700;font-size:13px;color:#c53030;margin-bottom:2px"><i class="fas fa-trash"></i> Delete Results</p>
+              <p style="font-size:11px;color:#888;margin:0">Permanently deletes these results. This cannot be undone.</p>
+            </div>
+            <button class="btn btn-red btn-sm" onclick="deleteTestResults()"><i class="fas fa-trash"></i> Delete Results</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BONUS MARKS -->
+      <div class="del-results-card" style="background:#fffbf0;border-color:rgba(184,134,11,0.3)">
+        <div class="fc-title" style="color:var(--gold);margin-bottom:4px"><i class="fas fa-plus-circle"></i> Bonus Marks</div>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Award bonus marks to everyone who took a test, or to one specific student on one test. Editing the value later just shifts marks by the difference — safe to re-apply.</p>
+
+        <!-- Whole-test bonus -->
+        <div style="background:#fff;border:1.5px solid #f0c040;border-radius:8px;padding:12px 14px;margin-bottom:12px">
+          <p style="font-weight:700;font-size:13px;color:#b7791f;margin-bottom:8px"><i class="fas fa-users"></i> Bonus for entire test</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+            <div class="fg" style="flex:1;min-width:180px;margin:0">
+              <label>Select Test</label>
+              <select id="bonus-test-sel" onchange="onBonusTestSelect()"><option value=""> Select a test </option></select>
+            </div>
+            <div class="fg" style="margin:0;width:120px">
+              <label>Bonus Marks</label>
+              <input type="number" id="bonus-test-marks" placeholder="e.g. 4" step="0.5">
+            </div>
+            <button class="btn btn-gold btn-sm" onclick="applyTestBonus()"><i class="fas fa-check"></i> Apply</button>
+          </div>
+          <p id="bonus-test-current" style="font-size:11px;color:#888;margin-top:6px"></p>
+        </div>
+
+        <!-- Per-student bonus -->
+        <div style="background:#fff;border:1.5px solid #e2c98a;border-radius:8px;padding:12px 14px">
+          <p style="font-weight:700;font-size:13px;color:#b7791f;margin-bottom:8px"><i class="fas fa-user"></i> Bonus for one student (same test as above)</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px">
+            <div class="fg" style="flex:1;min-width:180px;margin:0">
+              <label>Student</label>
+              <select id="bonus-student-sel"><option value="">Select test above first</option></select>
+            </div>
+            <div class="fg" style="margin:0;width:120px">
+              <label>Bonus Marks</label>
+              <input type="number" id="bonus-student-marks" placeholder="e.g. 2" step="0.5">
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="applyStudentBonus()"><i class="fas fa-check"></i> Apply</button>
+          </div>
+          <p style="font-size:11px;color:#888;margin:0">Loads students who attempted the test selected above.</p>
+        </div>
+
+        <!-- Bonus questions: regrade -->
+        <div style="background:#fff;border:1.5px solid #e2c98a;border-radius:8px;padding:12px 14px;margin-top:12px">
+          <p style="font-weight:700;font-size:13px;color:#b7791f;margin-bottom:8px"><i class="fas fa-star"></i> Bonus questions (same test as above)</p>
+          <p style="font-size:11px;color:#888;margin:0 0 10px">Tick "Bonus Question" on one or more questions in the test's Edit screen (marks section, next to Multi-Choice), Save, then hit Regrade — every student who attempted that question gets full marks for it, right or wrong. Skipping it still counts as not attempted.</p>
+          <button class="btn btn-outline btn-sm" onclick="regradeBonusQuestions()"><i class="fas fa-sync"></i> Regrade using selected test's current bonus questions</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE TEST TAB -->
+    <div id="atab-create-test" class="atab">
+      <div class="dtab-header">
+        <h3 id="ct-label"><i class="fas fa-plus-circle" style="color:var(--gold)"></i> Create New Test</h3>
+        <button class="btn btn-ghost btn-sm" onclick="resetTestForm()"><i class="fas fa-redo"></i> Reset</button>
+      </div>
+      <div class="ct-form">
+        <div class="form-card">
+          <div class="fc-title"><i class="fas fa-info-circle"></i> Test Info</div>
+          <div class="form-row-2">
+            <div class="fg"><label>Test Title *</label><input type="text" id="ct-title" placeholder="e.g. Isomerism Test 1"></div>
+            <div class="fg"><label>Subject *</label><input type="text" id="ct-subject" placeholder="e.g. Chemistry"></div>
+          </div>
+          <div class="form-row-2">
+            <div class="fg"><label>Topic *</label><input type="text" id="ct-topic" placeholder="e.g. Organic Chemistry"></div>
+            <div class="fg"><label>Duration (min) *</label><input type="number" id="ct-duration" placeholder="60" min="1" max="300"></div>
+          </div>
+          <div class="fg"><label>Description (optional)</label><textarea id="ct-desc" rows="2" placeholder="Optional description..."></textarea></div>
+          <div class="form-row-2">
+            <div class="fg"><label>Start Time (optional)</label><input type="datetime-local" id="ct-start"></div>
+            <div class="fg"><label>End Time (optional)</label><input type="datetime-local" id="ct-end"></div>
+          </div>
+          <div class="fg">
+            <label>Target Batches <span style="font-weight:400;text-transform:none;font-size:11px;color:var(--text-muted)">(leave all unchecked = visible to all batches)</span></label>
+            <div style="display:flex;gap:16px;margin-top:6px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="batch-11" style="width:auto;accent-color:var(--gold)"> Class 11th</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="batch-12" style="width:auto;accent-color:var(--gold)"> Class 12th</label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="batch-drop" style="width:auto;accent-color:var(--gold)"> Dropper</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <div class="fc-title"><i class="fas fa-ad"></i> Ad Page <span style="font-weight:400;text-transform:none;font-size:11px;color:var(--text-muted)">(students see this before starting test)</span></div>
+          <div class="toggle-row"><label style="font-size:13px">Enable Ad Page for this test</label><label class="tog"><input type="checkbox" id="ct-ad-on"><span class="tog-sl"></span></label></div>
+          <div class="fg"><label>Ad Page Redirect URL <span style="font-weight:400;text-transform:none;font-size:11px">(when student clicks any image)</span></label><input type="url" id="ct-ad-url" placeholder="https://..."></div>
+          <div class="fg">
+            <label>Select Images to Show on Ad Page <span style="font-weight:400;text-transform:none;font-size:11px">(select from your uploaded images)</span></label>
+            <div id="ad-image-picker" class="img-picker-wrap"><span style="font-size:12px;color:var(--text-muted)">Upload images in the Images tab first, then select here</span></div>
+          </div>
+        </div>
+
+        <div class="form-card">
+          <div class="qs-header">
+            <div class="fc-title" style="margin:0"><i class="fas fa-question-circle"></i> Questions (<span id="q-count">0</span>)</div>
+            <button class="btn btn-gold btn-sm" onclick="addQ()"><i class="fas fa-plus"></i> Add Question</button>
+          </div>
+          <div id="qs-container"></div>
+        </div>
+
+        <input type="hidden" id="edit-test-id">
+        <div class="form-actions">
+          <button class="btn btn-outline" onclick="saveDraft()"><i class="fas fa-save"></i> Save Draft</button>
+          <button class="btn btn-gold" onclick="savePublish()"><i class="fas fa-globe"></i> Save &amp; Publish</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI IMPORT TAB — content lazy-loaded by ai-import.js, never fetched on normal page load -->
+    <div id="atab-ai-import" class="atab">
+      <p style="color:var(--text-muted);padding:20px;text-align:center"><i class="fas fa-spinner fa-spin"></i> Loading...</p>
+    </div>
+
+    <!-- IMAGES TAB -->
+    <div id="atab-images" class="atab">
+      <div class="dtab-header">
+        <h3><i class="fas fa-images" style="color:var(--gold)"></i> Image Manager</h3>
+        <span id="img-count" class="count-pill">0</span>
+      </div>
+      <div class="form-card">
+        <div class="fc-title"><i class="fas fa-upload"></i> Upload New Image</div>
+        <div class="img-upload-zone" onclick="document.getElementById('img-file-input').click()">
+          <i class="fas fa-cloud-upload-alt" style="font-size:28px;color:var(--gold);display:block;margin-bottom:8px"></i>
+          <strong style="display:block;margin-bottom:3px">Click to select image</strong>
+          <span style="font-size:11px;color:var(--text-muted)">JPG, PNG, WebP  max 8MB. Stored in MongoDB.</span>
+        </div>
+        <input type="file" id="img-file-input" accept="image/*" style="display:none" onchange="handleImgSelect(this)">
+        <div id="img-preview-wrap" style="display:none;margin-bottom:12px">
+          <img id="img-preview-src" src="" alt="" style="max-height:160px;border-radius:8px;border:1.5px solid var(--border);display:block">
+        </div>
+        <div class="form-row-2">
+          <div class="fg"><label>Title (optional)</label><input type="text" id="img-title" placeholder="e.g. Batch 2025-26 Toppers"></div>
+          <div class="fg"><label>Description (optional)</label><input type="text" id="img-desc" placeholder="Short caption shown on image"></div>
+        </div>
+        <div class="fg"><label>Click URL (optional  clicking image opens this)</label><input type="url" id="img-url" placeholder="https://... (leave blank if no link)"></div>
+        <div class="toggle-row"><label style="font-size:13px">Show in Home Page Gallery &amp; Student Gallery</label><label class="tog"><input type="checkbox" id="img-show-home" checked><span class="tog-sl"></span></label></div>
+        <button class="btn btn-gold" onclick="uploadImage()" id="img-upload-btn"><i class="fas fa-upload"></i> Upload Image</button>
+      </div>
+      <div id="img-manager-grid" class="img-manager-grid"></div>
+    </div>
+
+    <!-- ANNOUNCE TAB -->
+    <div id="atab-announce" class="atab">
+      <div class="dtab-header"><h3><i class="fas fa-bullhorn" style="color:var(--gold)"></i> Push Notification & Chat</h3></div>
+      <div class="form-card" style="max-width:580px;margin-bottom:16px">
+        <div class="fc-title" style="color:var(--gold)"><i class="fas fa-toggle-on"></i> Student Features</div>
+        <p style="font-size:13px;color:#888;margin-bottom:12px">Switch features on/off for every student instantly. Changes reach students within a few minutes (their browsers cache the setting to keep the server light).</p>
+        <div class="toggle-row"><label style="font-size:13px"><strong>Tools tab</strong> &mdash; Gemini chat &amp; 3D molecule viewer (runs in the student's browser, zero server load)</label><label class="tog"><input type="checkbox" id="feat-tools" onchange="saveFeature('tools',this)" disabled><span class="tog-sl"></span></label></div>
+        <div class="toggle-row"><label style="font-size:13px"><strong>Ask AI on results</strong> &mdash; AI analysis of score, time &amp; weak areas (uses server Gemini quota)</label><label class="tog"><input type="checkbox" id="feat-ai" onchange="saveFeature('aiAnalytics',this)" disabled><span class="tog-sl"></span></label></div>
+        <span id="feat-status" style="font-size:12px;color:#888">Loading...</span>
+      </div>
+      <div class="form-card" style="max-width:580px;margin-bottom:16px">
+        <div class="fc-title" style="color:var(--gold)"><i class="fas fa-comments"></i> Chat Control</div>
+        <p style="font-size:13px;color:#888;margin-bottom:12px">Students see the Chat tab on their dashboard. Toggle mute to prevent students from sending messages.</p>
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-gold" onclick="adminToggleMute()" id="mute-chat-btn"><i class="fas fa-microphone-slash"></i> Toggle Mute Chat</button>
+          <span id="mute-status" style="font-size:13px;color:#888">Status: Loading...</span>
+        </div>
+      </div>
+      <!-- Admin Chat Panel -->
+      <div class="form-card" style="max-width:580px;margin-bottom:16px">
+        <div class="fc-title" style="color:var(--gold);display:flex;justify-content:space-between;align-items:center">
+          <span><i class="fas fa-comments"></i> Admin Chat (visible to all students)</span>
+          <button class="btn btn-outline btn-sm" onclick="clearAllChat()" style="font-size:11px;padding:4px 10px"><i class="fas fa-trash"></i> Clear All</button>
+        </div>
+        <div id="admin-chat-box" style="height:260px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;background:#fafaf8;margin-bottom:10px;display:flex;flex-direction:column;gap:6px">
+          <p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>
+        </div>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="admin-chat-input" placeholder="Send a message as Admin..." maxlength="300" style="flex:1" onkeydown="if(event.key==='Enter')adminSendChat()">
+          <button class="btn btn-gold" onclick="adminSendChat()"><i class="fas fa-paper-plane"></i> Send</button>
+        </div>
+      </div>
+
+      <div class="form-card" style="max-width:580px">
+        <div class="fc-title"><i class="fas fa-paper-plane"></i> Send Push Notification to All Students</div>
+        <div class="fg"><label>Title *</label><input type="text" id="ann-title" placeholder="e.g. New test live now!"></div>
+        <div class="fg mt-8"><label>Message *</label><textarea id="ann-body" rows="3" placeholder="Announcement text..."></textarea></div>
+        <div class="fg mt-8"><label>Link URL (optional)</label><input type="url" id="ann-url" placeholder="https://aitts.in" value="https://aitts.in"></div>
+        <button class="btn btn-gold mt-12" onclick="sendAnnouncement()"><i class="fas fa-paper-plane"></i> Send Push to All</button>
+      </div>
+    </div>
+
+    <!-- STUDENTS TAB -->
+    <div id="atab-students" class="atab">
+      <div class="dtab-header">
+        <h3><i class="fas fa-users" style="color:var(--gold)"></i> Students</h3>
+        <span id="students-count" class="count-pill">0</span>
+      </div>
+      <div style="background:#f8f6ee;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <p style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px"><i class="fas fa-rotate"></i> Fix Top Performers / Leaderboard Stats</p>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:8px">Recalculates every student's total tests/marks from their actual results. Run this once if the home page "Top Performers" widget is showing names or marks that don't match real results.</p>
+        <button class="btn btn-gold btn-sm" onclick="recomputeUserStats()"><i class="fas fa-rotate"></i> Recompute Stats</button>
+      </div>
+      <div style="background:#fff8f8;border:1.5px solid rgba(197,48,48,0.25);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+        <p style="font-size:11px;font-weight:700;color:#c53030;margin-bottom:6px"><i class="fas fa-trash"></i> Delete Entire Batch (permanent, cannot undo)</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-red btn-sm" onclick="deleteBatch('11')">Delete Class 11</button>
+          <button class="btn btn-red btn-sm" onclick="deleteBatch('12')">Delete Class 12</button>
+          <button class="btn btn-red btn-sm" onclick="deleteBatch('dropper')">Delete Droppers</button>
+        </div>
+      </div>
+      <div class="batch-filter-row">
+        <button class="bfbtn active" id="sbf-all" onclick="filterByBatch('')">All</button>
+        <button class="bfbtn" id="sbf-11" onclick="filterByBatch('11')">Class 11</button>
+        <button class="bfbtn" id="sbf-12" onclick="filterByBatch('12')">Class 12</button>
+        <button class="bfbtn" id="sbf-dropper" onclick="filterByBatch('dropper')">Dropper</button>
+      </div>
+      <div class="search-row"><input type="search" id="student-search" placeholder="Search name, email, phone, coaching, father, city..." oninput="filterStudents()"></div>
+      <div id="students-table"></div>
+    </div>
+
+    <!-- CHEATING TAB -->
+    <div id="atab-cheating" class="atab">
+      <div class="dtab-header"><h3><i class="fas fa-exclamation-triangle" style="color:var(--red)"></i> Cheating Reports</h3><button class="btn btn-red btn-sm" onclick="clearAllCheatLogs()"><i class="fas fa-trash"></i> Clear All</button></div>
+      <div id="cheat-list"></div>
+    </div>
+
+    <!-- ANALYTICS TAB -->
+    <div id="atab-leaderboard" class="atab">
+      <div class="dtab-header"><h3><i class="fas fa-trophy" style="color:var(--gold)"></i> Full Leaderboard</h3></div>
+      <div class="batch-filter" style="margin-bottom:8px">
+        <button class="bfbtn active" onclick="setAdminLbMode('overall')" id="albm-overall">Overall %</button>
+        <button class="bfbtn" onclick="setAdminLbMode('normalised')" id="albm-normalised">All Batches (Normalised)</button>
+      </div>
+      <div class="batch-filter" id="admin-lb-batch-filter">
+        <button class="bfbtn active" onclick="loadAdminLb('')" id="albf-all">All</button>
+        <button class="bfbtn" onclick="loadAdminLb('11')" id="albf-11">Class 11</button>
+        <button class="bfbtn" onclick="loadAdminLb('12')" id="albf-12">Class 12</button>
+        <button class="bfbtn" onclick="loadAdminLb('dropper')" id="albf-dropper">Dropper</button>
+      </div>
+      <p style="font-size:12px;color:#888;margin-bottom:8px">Ranked by percentage: (obtained ÷ total) × 100. Tiebreak: time taken.</p>
+      <div id="admin-lb-table" style="overflow-x:auto"></div>
+    </div>
+
+    <div id="atab-analytics" class="atab">
+      <div class="dtab-header"><h3><i class="fas fa-chart-pie" style="color:var(--gold)"></i> Analytics &amp; Storage</h3></div>
+      <div class="analytics-cards">
+        <div class="an-card"><i class="fas fa-file-alt"></i><span id="an-tests"></span><label>Tests</label></div>
+        <div class="an-card"><i class="fas fa-users"></i><span id="an-students"></span><label>Students</label></div>
+        <div class="an-card"><i class="fas fa-pen"></i><span id="an-attempts"></span><label>Attempts</label></div>
+      </div>
+      <div class="storage-card">
+        <div class="fc-title" style="color:var(--gold);margin-bottom:10px"><i class="fas fa-database"></i> MongoDB Storage (Free Tier: 512MB)</div>
+        <div id="storage-info"><span style="color:var(--text-muted);font-size:13px">Loading storage info...</span></div>
+      </div>
+      <div class="dtab-header mt-12">
+        <h3><i class="fas fa-trophy" style="color:var(--gold)"></i> Global Leaderboard</h3>
+        <div class="batch-filter-row" style="margin:0">
+          <button class="bfbtn active" id="alf-all" onclick="loadAdminLeaderboard('')">All</button>
+          <button class="bfbtn" id="alf-11" onclick="loadAdminLeaderboard('11')">Class 11</button>
+          <button class="bfbtn" id="alf-12" onclick="loadAdminLeaderboard('12')">Class 12</button>
+          <button class="bfbtn" id="alf-dropper" onclick="loadAdminLeaderboard('dropper')">Dropper</button>
+        </div>
+      </div>
+      <div id="admin-leaderboard"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+var S={allStudents:[],allStudentsBatch:'',qCounter:0,allImages:[]};
+var socket=null;
+
+// UTILS
+function showPage(id){document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});var el=document.getElementById(id);if(el)el.classList.add('active');window.scrollTo(0,0);}
+function esc(s){if(s==null)return'';var d=document.createElement('div');d.textContent=String(s);return d.innerHTML;}
+function gv(id){var el=document.getElementById(id);return el?(el.value||'').trim():'';}
+function setEl(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
+function togglePw(id,btn){var el=document.getElementById(id);if(!el)return;var showing=(el.type==='text');el.type=showing?'password':'text';var icon=btn.querySelector('i');if(icon)icon.className=showing?'fas fa-eye':'fas fa-eye-slash';}
+function toast(msg,type,dur){
+  type=type||'info';dur=dur||3500;
+  var c=document.getElementById('toast-container');if(!c)return;
+  var icons={success:'fa-check-circle',error:'fa-exclamation-circle',info:'fa-info-circle'};
+  var t=document.createElement('div');t.className='toast '+type;
+  t.innerHTML='<i class="fas '+(icons[type]||icons.info)+'"></i><span>'+esc(msg)+'</span>';
+  c.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(110%)';t.style.transition='0.3s';setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},300);},dur);
+}
+function api(url,opts){
+  opts=opts||{};
+  return fetch(url,{credentials:'include',headers:Object.assign({'Content-Type':'application/json'},opts.headers||{}),method:opts.method||'GET',body:opts.body||undefined}).then(function(res){
+    return res.json().then(function(data){if(!res.ok)throw new Error(data.error||('HTTP '+res.status));return data;});
+  });
+}
+
+// INIT
+window.addEventListener('load',function(){
+  showPage('page-login');
+  api('/api/auth/admin-me').then(function(r){
+    if(r&&r.admin){showPage('page-admin');initAdmin();}
+  }).catch(function(){});
+  setTimeout(function(){try{if(typeof io!=='undefined')socket=io({withCredentials:true});}catch(e){}},1000);
+});
+
+// AUTH
+function adminLogin(){
+  var email=gv('admin-email'),pass=gv('admin-password');
+  if(!email||!pass){toast('Enter email and password','error');return;}
+  var btn=document.getElementById('login-btn');
+  btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Logging in...';
+  api('/api/auth/admin-login',{method:'POST',body:JSON.stringify({email:email,password:pass})}).then(function(){
+    btn.disabled=false;btn.innerHTML='<i class="fas fa-lock-open"></i> Login';
+    showPage('page-admin');initAdmin();toast('Welcome, Admin!','success');
+  }).catch(function(err){
+    btn.disabled=false;btn.innerHTML='<i class="fas fa-lock-open"></i> Login';
+    toast(err.message||'Invalid credentials','error');
+  });
+}
+function adminLogout(){
+  api('/api/auth/logout',{method:'POST'}).catch(function(){});
+  showPage('page-login');toast('Logged out','info');
+}
+function initAdmin(){
+  loadAdminTests();loadAdminStats();loadAdminImages();loadDelTestSelect();loadFeatureFlags();
+  if(socket){try{socket.emit('join-admin');socket.on('cheat-alert',function(d){toast('Cheat: '+d.name+' ('+d.violations+' violations'+(d.autoSubmitted?' AUTO SUBMITTED':'')+')','error',7000);});}catch(e){}}
+}
+function adminTab(tab){
+  document.querySelectorAll('.atab').forEach(function(t){t.classList.remove('active');});
+  var el=document.getElementById('atab-'+tab);if(el)el.classList.add('active');
+  document.querySelectorAll('.nav-link,.mob-btn').forEach(function(l){l.classList.toggle('active',(l.getAttribute('onclick')||'').indexOf("'"+tab+"'")!==-1);});
+  if(tab==='tests')loadAdminTests();
+  else if(tab==='students')loadAdminStudents();
+  else if(tab==='analytics'){loadAdminStats();loadAdminLeaderboard('');}
+  else if(tab==='cheating')loadCheatLogs();
+  else if(tab==='images')loadAdminImages();
+  else if(tab==='create-test')loadImagePicker();
+  else if(tab==='announce')initAdminChat();
+  else if(tab==='ai-import')loadAiImportTab();
+}
+var _aiImportLoaded=false;
+function loadAiImportTab(){
+  if(_aiImportLoaded){ if(window.AiImport)AiImport.init(); return; }
+  var s=document.createElement('script');
+  s.src='ai-import.js';
+  s.onload=function(){ _aiImportLoaded=true; if(window.AiImport)AiImport.init(); };
+  s.onerror=function(){ var c=document.getElementById('atab-ai-import'); if(c)c.innerHTML='<p style="color:#c53030;padding:20px">Failed to load AI Import module.</p>'; };
+  document.body.appendChild(s);
+}
+
+// TESTS
+function loadAdminTests(){
+  var c=document.getElementById('admin-tests-list');if(!c)return;
+  c.innerHTML='<div class="skel"></div><div class="skel"></div>';
+  api('/api/admin/tests').then(function(tests){
+    if(!tests.length){c.innerHTML='<p style="text-align:center;color:#888;padding:28px">No tests yet. Create your first!</p>';return;}
+    var html='';
+    tests.forEach(function(t){
+      var tb=(t.targetBatches&&t.targetBatches.length)?t.targetBatches.join(', '):'All batches';
+      html+='<div class="admin-test-item">';
+      html+='<div style="flex:1;min-width:0"><div class="ati-title">'+esc(t.title)+'</div>';
+      html+='<div class="ati-meta"><span>'+esc(t.subject)+'</span><span>'+esc(t.topic)+'</span>';
+      html+='<span>'+(t.questions?t.questions.length:0)+'Q</span><span>'+t.duration+'min</span>';
+      html+='<span>'+(t.attemptCount||0)+' attempts</span><span>'+esc(tb)+'</span>';
+      html+='<span><span class="pub-dot '+(t.isPublished?'':'draft-dot')+'"></span>'+(t.isPublished?'Published':'Draft')+'</span></div></div>';
+      html+='<div class="ati-actions">';
+      html+='<button class="btn btn-outline btn-sm" onclick="editTest(\''+t._id+'\')"><i class="fas fa-edit"></i> Edit</button>';
+      html+='<button class="btn '+(t.isPublished?'btn-ghost':'btn-gold')+' btn-sm" onclick="togglePub(\''+t._id+'\')"><i class="fas fa-'+(t.isPublished?'eye-slash':'globe')+'"></i> '+(t.isPublished?'Unpublish':'Publish')+'</button>';
+      html+='<button class="btn btn-red btn-sm" onclick="deleteTest(\''+t._id+'\')"><i class="fas fa-trash"></i></button>';
+      html+='</div></div>';
+    });
+    c.innerHTML=html;
+  }).catch(function(err){c.innerHTML='<p style="color:#c53030;padding:16px">'+esc(err.message)+'</p>';});
+}
+function togglePub(id){
+  api('/api/admin/tests/'+id+'/publish',{method:'PATCH'}).then(function(r){
+    toast(r.isPublished?'Published!':'Unpublished','success');loadAdminTests();
+  }).catch(function(err){toast(err.message,'error');});
+}
+function deleteTest(id){
+  if(!confirm('Delete this test and ALL its results permanently?'))return;
+  api('/api/admin/tests/'+id,{method:'DELETE'}).then(function(){
+    toast('Deleted','info');loadAdminTests();loadDelTestSelect();
+  }).catch(function(err){toast(err.message,'error');});
+}
+function loadDelTestSelect(){
+  api('/api/admin/tests').then(function(tests){
+    var sel=document.getElementById('del-test-sel');if(!sel)return;
+    sel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t._id+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
+    var bsel=document.getElementById('bonus-test-sel');
+    if(bsel){
+      bsel.innerHTML='<option value="">Select a test</option>'+tests.map(function(t){return'<option value="'+t._id+'" data-bonus="'+(t.bonusMarks||0)+'">'+esc(t.title)+' ('+esc(t.subject)+')</option>';}).join('');
+    }
+  }).catch(function(){});
+}
+
+// ── BONUS MARKS ──────────────────────────────────────────────────────────────
+function onBonusTestSelect(){
+  var sel=document.getElementById('bonus-test-sel');
+  var testId=sel&&sel.value;
+  var cur=document.getElementById('bonus-test-current');
+  var studentSel=document.getElementById('bonus-student-sel');
+  if(!testId){
+    if(cur)cur.textContent='';
+    if(studentSel)studentSel.innerHTML='<option value="">Select test above first</option>';
+    return;
+  }
+  var opt=sel.options[sel.selectedIndex];
+  var currentBonus=opt?(opt.getAttribute('data-bonus')||'0'):'0';
+  if(cur)cur.textContent='Currently applied test-wide bonus: '+currentBonus+' marks';
+  var mInp=document.getElementById('bonus-test-marks');
+  if(mInp)mInp.value=currentBonus!=='0'?currentBonus:'';
+
+  if(studentSel){
+    studentSel.innerHTML='<option value="">Loading students...</option>';
+    api('/api/admin/tests/'+testId+'/results').then(function(results){
+      if(!results.length){studentSel.innerHTML='<option value="">No attempts for this test yet</option>';return;}
+      studentSel.innerHTML='<option value="">Select a student</option>'+results.map(function(r){
+        var name=(r.userId&&r.userId.name)||r.userName||'Unknown';
+        return '<option value="'+r.userId+'|'+r.testId+'" data-bonus="'+(r.bonusMarks||0)+'">'+esc(name)+' — '+r.obtainedMarks+'/'+r.totalMarks+'</option>';
+      }).join('');
+    }).catch(function(){studentSel.innerHTML='<option value="">Failed to load students</option>';});
+  }
+}
+
+function applyTestBonus(){
+  var sel=document.getElementById('bonus-test-sel');
+  var testId=sel&&sel.value;
+  if(!testId){toast('Select a test first','error');return;}
+  var mInp=document.getElementById('bonus-test-marks');
+  var marks=parseFloat(mInp&&mInp.value);
+  if(isNaN(marks)){toast('Enter a bonus marks value','error');return;}
+  var testName=sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].text||'';
+  if(!confirm('Apply '+marks+' bonus marks to EVERY student who took "'+testName+'"?'))return;
+  api('/api/admin/tests/'+testId+'/bonus',{method:'POST',body:JSON.stringify({bonusMarks:marks})}).then(function(){
+    toast('Bonus marks applied to all students for this test','success');
+    loadDelTestSelect();
+    onBonusTestSelect();
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+function regradeBonusQuestions(){
+  var sel=document.getElementById('bonus-test-sel');
+  var testId=sel&&sel.value;
+  if(!testId){toast('Select a test first','error');return;}
+  var testName=sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].text||'';
+  if(!confirm('Re-grade every already-submitted result for "'+testName+'" using its current Bonus Question flags? This rewrites stored scores/ranks for that test.'))return;
+  api('/api/admin/tests/'+testId+'/regrade',{method:'POST'}).then(function(data){
+    toast(data.message||'Regraded','success');
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+function applyStudentBonus(){
+  var testSel=document.getElementById('bonus-test-sel');
+  var studentSel=document.getElementById('bonus-student-sel');
+  var resultKey=studentSel&&studentSel.value; // "userId|testId" — Result's key in DynamoDB is composite, not a single _id
+  if(!testSel||!testSel.value){toast('Select a test first','error');return;}
+  if(!resultKey){toast('Select a student first','error');return;}
+  var parts=resultKey.split('|');
+  var mInp=document.getElementById('bonus-student-marks');
+  var marks=parseFloat(mInp&&mInp.value);
+  if(isNaN(marks)){toast('Enter a bonus marks value','error');return;}
+  var studentName=studentSel.options[studentSel.selectedIndex]&&studentSel.options[studentSel.selectedIndex].text||'';
+  if(!confirm('Apply '+marks+' bonus marks to '+studentName+'?'))return;
+  api('/api/admin/results/'+parts[0]+'/'+parts[1]+'/bonus',{method:'POST',body:JSON.stringify({bonusMarks:marks})}).then(function(){
+    toast('Bonus marks applied to this student','success');
+    onBonusTestSelect();
+    if(mInp)mInp.value='';
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+function deleteTestResults(){
+  var sel=document.getElementById('del-test-sel');
+  var bSel=document.getElementById('del-batch-sel');
+  var testId=sel&&sel.value;var batch=(bSel&&bSel.value)||'all';
+  if(!testId){toast('Select a test first','error');return;}
+  var testName=sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].text||'';
+  var bLabel={'all':'all batches','11':'Class 11','12':'Class 12','dropper':'Dropper'}[batch]||batch;
+  if(!confirm('Permanently delete results for "'+testName+'" ('+bLabel+')? This cannot be undone.'))return;
+  api('/api/admin/tests/'+testId+'/results?batch='+batch,{method:'DELETE'}).then(function(r){
+    toast(r.message||(r.deleted+' result(s) deleted.'),'success');loadAdminStats();
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+// CREATE/EDIT TEST
+var _qImages={};
+var _oImages={};
+// Preserves questionId/optionId across an edit-and-resave. Without this,
+// every save regenerated fresh ids (testModel.normalizeQuestions falls back
+// to a new genId() whenever questionId is missing), which silently orphaned
+// every existing student Result's answers — the analysis view matches a
+// saved answer to its question by questionId, so past results for an edited
+// test would all show as "not attempted" even though the student answered.
+var _qIds={};
+var _oIds={};
+
+function resetTestForm(){
+  document.getElementById('edit-test-id').value='';
+  document.getElementById('ct-label').innerHTML='<i class="fas fa-plus-circle" style="color:#b8860b"></i> Create New Test';
+  ['ct-title','ct-subject','ct-topic','ct-desc','ct-ad-url'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+  var dur=document.getElementById('ct-duration');if(dur)dur.value='';
+  var tog=document.getElementById('ct-ad-on');if(tog)tog.checked=false;
+  ['batch-11','batch-12','batch-drop'].forEach(function(id){var el=document.getElementById(id);if(el)el.checked=false;});
+  document.getElementById('qs-container').innerHTML='';
+  S.qCounter=0;_qImages={};_oImages={};_qIds={};_oIds={};updateQCount();loadImagePicker();
+}
+
+function loadImagePicker(){
+  api('/api/admin/ad-images').then(function(imgs){
+    S.allImages=imgs;buildImagePicker(imgs,[]);
+  }).catch(function(){});
+}
+function buildImagePicker(imgs,selected){
+  var c=document.getElementById('ad-image-picker');if(!c)return;
+  if(!imgs||!imgs.length){c.innerHTML='<span style="font-size:12px;color:#888">No images yet. Upload in Images tab first.</span>';return;}
+  var html='';
+  imgs.forEach(function(img){
+    var isSel=selected.indexOf(img._id)!==-1;
+    html+='<label class="img-picker-item">';
+    html+='<input type="checkbox" name="ad-img-sel" value="'+img._id+'" style="display:none"'+(isSel?' checked':'')+'>';
+    html+='<img src="'+img.imageData+'" style="width:72px;height:54px;object-fit:cover;border-radius:5px;border:2px solid '+(isSel?'#b8860b':'transparent')+';transition:border 0.2s">';
+    html+='<span>'+esc(img.title||'image')+'</span></label>';
+  });
+  c.innerHTML=html;
+  c.querySelectorAll('input[type=checkbox]').forEach(function(cb){
+    cb.addEventListener('change',function(){var img=this.parentElement&&this.parentElement.querySelector('img');if(img)img.style.borderColor=this.checked?'#b8860b':'transparent';});
+  });
+}
+
+function addQ(data){
+  var idx=S.qCounter++;
+  var c=document.getElementById('qs-container');if(!c)return;
+  var n=c.querySelectorAll('.q-item').length+1;
+  var optN=(data&&data.options)?data.options.length:4;
+  var isMulti=(data&&data.isMultiChoice)||false;
+  var qImgData=(data&&data.questionImage)||'';
+  if(qImgData)_qImages[idx]=qImgData;
+  if(data&&(data.questionId||data._id))_qIds[idx]=data.questionId||data._id;
+
+  var div=document.createElement('div');
+  div.className='q-item';div.id='qi-'+idx;
+
+  var html='<div class="qi-top"><span class="qi-num">Question '+n+'</span>';
+  html+='<button type="button" class="btn btn-red btn-sm" onclick="this.closest(\'.q-item\').remove();updateQCount()"><i class="fas fa-trash"></i> Remove</button></div>';
+  html+='<div class="qi-body">';
+  // Question text + image
+  html+='<div class="fg"><label>Question Text <span style="font-weight:400;opacity:0.7">(type and/or attach image)</span></label>';
+  html+='<textarea id="qt-'+idx+'" rows="3" placeholder="Type question here...">'+esc(data?data.questionText||'':'')+'</textarea>';
+  html+='<div class="q-attach-bar">';
+  html+='<label class="attach-btn"><i class="fas fa-paperclip"></i> Attach Question Image<input type="file" accept="image/*" onchange="attachQImg(this,'+idx+')" style="display:none"></label>';
+  html+='<div id="qimg-preview-'+idx+'">'+(qImgData?'<div class="q-img-preview-wrap"><img src="'+qImgData+'" /><button type="button" onclick="removeQImg('+idx+')">x</button></div>':'')+'</div>';
+  html+='</div></div>';
+  // Marks row
+  html+='<div class="qi-marks-row">';
+  html+='<div class="fg"><label>Marks (+)</label><input type="number" id="qm-'+idx+'" value="'+((data&&data.marks)||4)+'" min="0"></div>';
+  html+='<div class="fg"><label>Negative (-)</label><input type="number" id="qn-'+idx+'" value="'+((data&&data.negativeMarks)||1)+'" min="0"></div>';
+  html+='<div class="fg"><label>Options</label><select id="qo-'+idx+'" onchange="rebuildOpts('+idx+')">';
+  [2,3,4,5].forEach(function(v){html+='<option value="'+v+'"'+(optN===v?' selected':'')+'>'+v+' Options</option>';});
+  html+='</select></div>';
+  html+='<div class="fg"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="qmc-'+idx+'" style="width:auto;accent-color:#b8860b;cursor:pointer"'+(isMulti?' checked':'')+' onchange="onMultiChange('+idx+',this.checked)"> Multi-Choice</label></div>';
+  html+='<div class="fg"><label style="display:flex;align-items:center;gap:6px;cursor:pointer" title="Anyone who attempts this question gets full marks, right or wrong"><input type="checkbox" id="qb-'+idx+'" style="width:auto;accent-color:#b8860b;cursor:pointer"'+((data&&data.isBonus)?' checked':'')+'> Bonus Question</label></div>';
+  html+='</div>';
+  // Options
+  html+='<div class="fg"><label id="opts-lbl-'+idx+'">Options <span style="font-weight:400;font-size:11px;color:#888">'+(isMulti?'(check ALL correct)':'(select ONE correct)')+'</span></label>';
+  html+='<div class="opts-builder" id="ob-'+idx+'"></div></div>';
+  // Explanation
+  html+='<div class="fg"><label>Explanation (optional)</label><input type="text" id="qe-'+idx+'" placeholder="Brief explanation" value="'+esc((data&&data.explanation)||'')+'"></div>';
+  html+='</div>';
+
+  div.innerHTML=html;
+  c.appendChild(div);
+  buildOpts(idx,data&&data.options,optN,isMulti);
+  updateQCount();
+}
+
+function onMultiChange(idx,isMulti){
+  var lbl=document.getElementById('opts-lbl-'+idx);
+  if(lbl)lbl.innerHTML='Options <span style="font-weight:400;font-size:11px;color:#888">'+(isMulti?'(check ALL correct)':'(select ONE correct)')+'</span>';
+  rebuildOpts(idx);
+}
+function rebuildOpts(idx){
+  var n=parseInt((document.getElementById('qo-'+idx)||{}).value)||4;
+  var isMulti=(document.getElementById('qmc-'+idx)||{}).checked||false;
+  buildOpts(idx,null,n,isMulti);
+}
+function buildOpts(idx,existing,n,isMulti){
+  var c=document.getElementById('ob-'+idx);if(!c)return;
+  var letters=['A','B','C','D','E'];
+  var html='';
+  for(var i=0;i<n;i++){
+    var hasCorrect=existing&&existing[i]&&existing[i].isCorrect;
+    var optImg=(existing&&existing[i]&&existing[i].imageData)||(_oImages[idx+'-'+i])||'';
+    if(optImg)_oImages[idx+'-'+i]=optImg;
+    var optId=(existing&&existing[i]&&(existing[i].optionId||existing[i]._id))||_oIds[idx+'-'+i];
+    if(optId)_oIds[idx+'-'+i]=optId;
+    html+='<div class="opt-row" id="opt-row-'+idx+'-'+i+'"><div class="opt-row-top">';
+    if(isMulti){
+      html+='<input type="checkbox" id="qr-'+idx+'-'+i+'" name="qr-'+idx+'"'+(hasCorrect?' checked':'')+' style="width:16px;height:16px;accent-color:#b8860b;cursor:pointer;flex-shrink:0">';
+    } else {
+      html+='<input type="radio" id="qr-'+idx+'-'+i+'" name="qr-'+idx+'" value="'+i+'"'+(hasCorrect?' checked':'')+' style="width:16px;height:16px;accent-color:#b8860b;cursor:pointer;flex-shrink:0">';
+    }
+    html+='<span style="color:#b8860b;font-weight:700;font-size:13px;min-width:18px">'+letters[i]+'</span>';
+    html+='<input type="text" id="qot-'+idx+'-'+i+'" placeholder="Option '+letters[i]+'" value="'+esc((existing&&existing[i]&&existing[i].text)||'')+'">';
+    html+='<label for="qr-'+idx+'-'+i+'" style="font-size:11px;color:#888;white-space:nowrap;cursor:pointer">Correct</label>';
+    html+='<label class="attach-btn" style="padding:4px 8px;font-size:11px;flex-shrink:0" title="Attach image"><i class="fas fa-paperclip"></i><input type="file" accept="image/*" onchange="attachOptImg(this,'+idx+','+i+')" style="display:none"></label>';
+    html+='</div>';
+    if(optImg)html+='<div class="opt-img-preview-wrap" id="oimg-preview-'+idx+'-'+i+'"><img src="'+optImg+'" alt=""><button type="button" onclick="removeOptImg('+idx+','+i+')">x</button></div>';
+    else html+='<div id="oimg-preview-'+idx+'-'+i+'"></div>';
+    html+='</div>';
+  }
+  c.innerHTML=html;
+}
+
+function attachQImg(input,idx){
+  var file=input.files[0];if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    _qImages[idx]=e.target.result;
+    var p=document.getElementById('qimg-preview-'+idx);
+    if(p)p.innerHTML='<div class="q-img-preview-wrap"><img src="'+e.target.result+'"><button type="button" onclick="removeQImg('+idx+')">x</button></div>';
+  };
+  r.readAsDataURL(file);
+}
+function removeQImg(idx){delete _qImages[idx];var p=document.getElementById('qimg-preview-'+idx);if(p)p.innerHTML='';}
+function attachOptImg(input,qIdx,oIdx){
+  var file=input.files[0];if(!file)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    _oImages[qIdx+'-'+oIdx]=e.target.result;
+    var p=document.getElementById('oimg-preview-'+qIdx+'-'+oIdx);
+    // Rebuilt as innerHTML (was: p.src=..., which assumed the placeholder
+    // was always already an <img> tag). That broke attaching a FIRST image
+    // to an option that had none yet — the placeholder there is an empty
+    // <div> (see buildOpts()), and a <div> has no visual .src, so the
+    // preview silently never appeared until the form was reloaded (the
+    // image data was still saved correctly either way, just invisible in
+    // the editor). Matches the same wrap+remove-button markup as the
+    // question-image preview now.
+    if(p)p.outerHTML='<div class="opt-img-preview-wrap" id="oimg-preview-'+qIdx+'-'+oIdx+'"><img src="'+e.target.result+'" alt=""><button type="button" onclick="removeOptImg('+qIdx+','+oIdx+')">x</button></div>';
+  };
+  r.readAsDataURL(file);
+}
+function removeOptImg(qIdx,oIdx){delete _oImages[qIdx+'-'+oIdx];var p=document.getElementById('oimg-preview-'+qIdx+'-'+oIdx);if(p)p.outerHTML='<div id="oimg-preview-'+qIdx+'-'+oIdx+'"></div>';}
+function updateQCount(){setEl('q-count',document.querySelectorAll('.q-item').length);}
+
+function collectTest(publish){
+  var qs=[];
+  var items=document.querySelectorAll('.q-item');
+  for(var qi=0;qi<items.length;qi++){
+    var idx=parseInt(items[qi].id.split('-')[1]);
+    var textEl=document.getElementById('qt-'+idx);
+    var text=textEl?textEl.value.trim():'';
+    var qImg=_qImages[idx]||'';
+    if(!text&&!qImg)continue;
+    var marks=parseInt((document.getElementById('qm-'+idx)||{}).value)||4;
+    var neg=parseInt((document.getElementById('qn-'+idx)||{}).value)||1;
+    var exp=((document.getElementById('qe-'+idx)||{}).value||'').trim();
+    var nOpts=parseInt((document.getElementById('qo-'+idx)||{}).value)||4;
+    var isMulti=(document.getElementById('qmc-'+idx)||{}).checked||false;
+    var isBonus=(document.getElementById('qb-'+idx)||{}).checked||false;
+    var opts=[];var hasCorrect=false;var correctOpts=[];
+    for(var oi=0;oi<nOpts;oi++){
+      var t2=((document.getElementById('qot-'+idx+'-'+oi)||{}).value||'').trim();
+      var oImg=_oImages[idx+'-'+oi]||'';
+      var correct;
+      if(isMulti){correct=(document.getElementById('qr-'+idx+'-'+oi)||{}).checked||false;}
+      else{var sel=document.querySelector('input[name="qr-'+idx+'"]:checked');correct=sel&&sel.value===String(oi);}
+      if(t2||oImg){if(correct){hasCorrect=true;correctOpts.push(oi);}opts.push({optionId:_oIds[idx+'-'+oi]||undefined,text:t2,isCorrect:correct,imageData:oImg||undefined});}
+    }
+    if(!hasCorrect){toast('Q'+(qi+1)+': Select the correct answer','error');throw new Error('validation');}
+    if(opts.length<2){toast('Q'+(qi+1)+': Add at least 2 options','error');throw new Error('validation');}
+    qs.push({questionId:_qIds[idx]||undefined,questionText:text,questionImage:qImg||undefined,options:opts,isMultiChoice:isMulti,correctOptions:correctOpts,marks:marks,negativeMarks:neg,isBonus:isBonus,explanation:exp});
+  }
+  var selImgs=[];
+  document.querySelectorAll('input[name="ad-img-sel"]:checked').forEach(function(cb){selImgs.push(cb.value);});
+  var batches=[];
+  if((document.getElementById('batch-11')||{}).checked)batches.push('11');
+  if((document.getElementById('batch-12')||{}).checked)batches.push('12');
+  if((document.getElementById('batch-drop')||{}).checked)batches.push('dropper');
+  return{
+    title:gv('ct-title'),subject:gv('ct-subject'),topic:gv('ct-topic'),
+    description:gv('ct-desc'),duration:parseInt(gv('ct-duration'))||60,
+    questions:qs,adImages:selImgs,adRedirectUrl:gv('ct-ad-url'),
+    adEnabled:(document.getElementById('ct-ad-on')||{}).checked||false,
+    startTime:gv('ct-start')||null,endTime:gv('ct-end')||null,
+    targetBatches:batches,isPublished:publish
+  };
+}
+function saveDraft(){saveTest(false);}
+function savePublish(){saveTest(true);}
+function saveTest(publish){
+  var data;try{data=collectTest(publish);}catch(e){return;}
+  if(!data.title){toast('Title required','error');return;}
+  if(!data.subject){toast('Subject required','error');return;}
+  if(!data.topic){toast('Topic required','error');return;}
+  if(!data.questions.length){toast('Add at least one question','error');return;}
+  var eid=gv('edit-test-id');
+  api(eid?'/api/admin/tests/'+eid:'/api/admin/tests',{method:eid?'PUT':'POST',body:JSON.stringify(data)}).then(function(){
+    toast(eid?'Test updated!':(publish?'Published!':'Saved as draft'),'success');
+    resetTestForm();adminTab('tests');
+  }).catch(function(err){toast(err.message,'error');});
+}
+function editTest(id){
+  api('/api/admin/tests').then(function(tests){
+    var t=null;for(var i=0;i<tests.length;i++){if(tests[i]._id===id){t=tests[i];break;}}
+    if(!t){toast('Test not found','error');return;}
+    adminTab('create-test');
+    setTimeout(function(){
+      document.getElementById('edit-test-id').value=id;
+      document.getElementById('ct-label').innerHTML='<i class="fas fa-edit" style="color:#b8860b"></i> Edit Test';
+      function sv(el,val){var e=document.getElementById(el);if(e)e.value=val||'';}
+      sv('ct-title',t.title);sv('ct-subject',t.subject);sv('ct-topic',t.topic);
+      sv('ct-desc',t.description);sv('ct-duration',t.duration);sv('ct-ad-url',t.adRedirectUrl);
+      var tog=document.getElementById('ct-ad-on');if(tog)tog.checked=!!t.adEnabled;
+      if(t.startTime)sv('ct-start',new Date(t.startTime).toISOString().slice(0,16));
+      if(t.endTime)sv('ct-end',new Date(t.endTime).toISOString().slice(0,16));
+      var tb=t.targetBatches||[];
+      var b11=document.getElementById('batch-11');if(b11)b11.checked=tb.indexOf('11')!==-1;
+      var b12=document.getElementById('batch-12');if(b12)b12.checked=tb.indexOf('12')!==-1;
+      var bdrop=document.getElementById('batch-drop');if(bdrop)bdrop.checked=tb.indexOf('dropper')!==-1;
+      document.getElementById('qs-container').innerHTML='';S.qCounter=0;_qImages={};_oImages={};_qIds={};_oIds={};
+      (t.questions||[]).forEach(function(q){addQ(q);});
+      loadImagePicker();
+      setTimeout(function(){
+        (t.adImages||[]).forEach(function(imgId){
+          var cb=document.querySelector('input[name="ad-img-sel"][value="'+imgId+'"]');
+          if(cb){cb.checked=true;var img=cb.parentElement&&cb.parentElement.querySelector('img');if(img)img.style.borderColor='#b8860b';}
+        });
+      },300);
+    },100);
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+// IMAGES
+var _imgFile=null;
+function handleImgSelect(input){
+  _imgFile=input.files[0];if(!_imgFile)return;
+  var r=new FileReader();
+  r.onload=function(e){
+    var pw=document.getElementById('img-preview-wrap');var ps=document.getElementById('img-preview-src');
+    if(pw&&ps){pw.style.display='block';ps.src=e.target.result;}
+  };
+  r.readAsDataURL(_imgFile);
+}
+function uploadImage(){
+  if(!_imgFile){toast('Select an image first','error');return;}
+  var btn=document.getElementById('img-upload-btn');
+  btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Uploading...';
+  var fd=new FormData();
+  fd.append('image',_imgFile);
+  fd.append('title',gv('img-title'));
+  fd.append('description',gv('img-desc'));
+  fd.append('redirectUrl',gv('img-url'));
+  fd.append('showOnHome',(document.getElementById('img-show-home')||{}).checked?'true':'false');
+  fetch('/api/admin/ad-images',{method:'POST',credentials:'include',body:fd}).then(function(r){return r.json();}).then(function(data){
+    btn.disabled=false;btn.innerHTML='<i class="fas fa-upload"></i> Upload Image';
+    if(data.error)throw new Error(data.error);
+    toast('Image uploaded!','success');
+    _imgFile=null;
+    var pw=document.getElementById('img-preview-wrap');if(pw)pw.style.display='none';
+    ['img-title','img-desc','img-url'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+    var fi=document.getElementById('img-file-input');if(fi)fi.value='';
+    loadAdminImages();
+  }).catch(function(err){
+    btn.disabled=false;btn.innerHTML='<i class="fas fa-upload"></i> Upload Image';
+    toast(err.message||'Upload failed','error');
+  });
+}
+function loadAdminImages(){
+  api('/api/admin/ad-images').then(function(imgs){
+    S.allImages=imgs;setEl('img-count',imgs.length);
+    var c=document.getElementById('img-manager-grid');if(!c)return;
+    if(!imgs.length){c.innerHTML='<p style="color:#888;padding:14px">No images yet.</p>';return;}
+    var html='';
+    imgs.forEach(function(img){
+      html+='<div class="img-card">';
+      html+='<img class="img-card-img" src="'+img.imageData+'" alt="'+esc(img.title||'')+'" loading="lazy">';
+      html+='<div class="img-card-body">';
+      html+='<div class="img-card-title">'+esc(img.title||'Untitled')+'</div>';
+      if(img.description)html+='<div style="font-size:10px;color:#888;margin-bottom:2px">'+esc(img.description)+'</div>';
+      html+='<div class="img-card-url">'+(img.redirectUrl?'<a href="'+esc(img.redirectUrl)+'" target="_blank" style="color:#b8860b;font-size:10px">'+esc(img.redirectUrl)+'</a>':'<span style="font-size:10px;color:#888">No link</span>')+'</div>';
+      html+='<div style="margin-bottom:6px"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:999px;background:'+(img.showOnHome?'#dcfce7':'#fee2e2')+';color:'+(img.showOnHome?'#15803d':'#c53030')+'">'+(img.showOnHome?'On Home':'Hidden')+'</span></div>';
+      html+='<div class="img-card-actions">';
+      html+='<button class="btn btn-outline btn-sm" style="font-size:11px;padding:5px 9px" onclick="editImagePrompt(\''+img._id+'\')"><i class="fas fa-edit"></i> Edit</button>';
+      html+='<button class="btn btn-red btn-sm" style="font-size:11px;padding:5px 9px" onclick="deleteImage(\''+img._id+'\')"><i class="fas fa-trash"></i></button>';
+      html+='</div></div></div>';
+    });
+    c.innerHTML=html;
+    var checked=[];
+    document.querySelectorAll('input[name="ad-img-sel"]:checked').forEach(function(cb){checked.push(cb.value);});
+    buildImagePicker(imgs,checked);
+  }).catch(function(){});
+}
+function editImagePrompt(id){
+  var img=S.allImages.filter(function(i){return i._id===id;})[0];if(!img)return;
+  var newTitle=prompt('Title:',img.title||'');if(newTitle===null)return;
+  var newDesc=prompt('Description:',img.description||'');if(newDesc===null)return;
+  var newUrl=prompt('Click URL (leave blank for none):',img.redirectUrl||'');if(newUrl===null)return;
+  api('/api/admin/ad-images/'+id,{method:'PUT',body:JSON.stringify({title:newTitle,description:newDesc,redirectUrl:newUrl,showOnHome:img.showOnHome!==false})}).then(function(){
+    toast('Updated!','success');loadAdminImages();
+  }).catch(function(err){toast(err.message,'error');});
+}
+function deleteImage(id){
+  if(!confirm('Delete this image permanently?'))return;
+  api('/api/admin/ad-images/'+id,{method:'DELETE'}).then(function(){toast('Deleted','info');loadAdminImages();}).catch(function(err){toast(err.message,'error');});
+}
+
+// STUDENTS
+function loadAdminStudents(){
+  var c=document.getElementById('students-table');if(!c)return;
+  Promise.all([
+    api('/api/admin/students?limit=2000'),
+    refreshMutedStudents()
+  ]).then(function(res){
+    var r=res[0];
+    S.allStudents=r.students;setEl('students-count',r.total);renderStudents(r.students);
+  }).catch(function(err){c.innerHTML='<p style="color:#c53030">'+esc(err.message)+'</p>';});
+}
+// Pulls the REAL current blocked-uid list from the server into the local
+// mutedStudents cache. Without this, mutedStudents started as {} on every
+// page load with no idea which students were actually already blocked — so
+// right after a refresh every mute button showed "not muted" regardless of
+// truth, and clicking one could silently flip an already-blocked student
+// back to unblocked instead of actually muting them.
+function refreshMutedStudents(){
+  return api('/api/chat/blocked-students').then(function(r){
+    mutedStudents={};
+    (r.blockedUids||[]).forEach(function(uid){mutedStudents[uid]=true;});
+  }).catch(function(){});
+}
+function filterByBatch(batch){
+  S.allStudentsBatch=batch;
+  ['all','11','12','dropper'].forEach(function(b){var el=document.getElementById('sbf-'+b);if(el)el.classList.toggle('active',(batch===''&&b==='all')||(batch===b));});
+  filterStudents();
+}
+function filterStudents(){
+  var q=gv('student-search').toLowerCase();var batch=S.allStudentsBatch;
+  var list=S.allStudents.filter(function(s){
+    var bMatch=!batch||(s.batch===batch);
+    var sMatch=!q||(s.name||'').toLowerCase().indexOf(q)!==-1||(s.email||'').toLowerCase().indexOf(q)!==-1||(s.phone||'').indexOf(q)!==-1||(s.coachingName||'').toLowerCase().indexOf(q)!==-1||(s.fatherName||'').toLowerCase().indexOf(q)!==-1||(s.cityState||'').toLowerCase().indexOf(q)!==-1||(s.whatsappNumber||'').indexOf(q)!==-1;
+    return bMatch&&sMatch;
+  });
+  renderStudents(list);
+}
+function renderStudents(list){
+  var c=document.getElementById('students-table');if(!c)return;
+  if(!list.length){c.innerHTML='<p style="text-align:center;color:#888;padding:28px">No students found.</p>';return;}
+  var bMap={'11':'Class 11','12':'Class 12','dropper':'Dropper'};
+  var html='<div style="overflow-x:auto"><table class="students-table"><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Phone</th><th>WhatsApp</th><th>Batch</th><th>Coaching</th><th>Father</th><th>Father Occ.</th><th>City/State</th><th>Tests</th><th>Total Marks</th><th>Joined</th><th>Actions</th></tr></thead><tbody>';
+  list.forEach(function(s,i){
+    var bColors={'11':'#dbeafe:#1e40af','12':'#dcfce7:#15803d','dropper':'#fef3c7:#92400e'}[s.batch]||'#f0f0f0:#555';
+    var bc=bColors.split(':');
+    html+='<tr><td>'+(i+1)+'</td><td><strong>'+esc(s.name)+'</strong></td><td style="font-size:11px">'+esc(s.email)+'</td><td>'+esc(s.phone||'-')+'</td><td>'+esc(s.whatsappNumber||'-')+'</td>';
+    html+='<td><span style="padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;background:'+bc[0]+';color:'+bc[1]+'">'+esc(bMap[s.batch]||s.batch||'-')+'</span></td>';
+    html+='<td>'+esc(s.coachingName||'-')+'</td><td>'+esc(s.fatherName||'-')+'</td><td>'+esc(s.fatherOccupation||'-')+'</td><td>'+esc(s.cityState||'-')+'</td><td>'+(s.totalTests||0)+'</td><td style="font-family:monospace;color:#b8860b">'+(s.totalMarks||0)+'</td>';
+    html+='<td style="font-size:11px">'+new Date(s.createdAt).toLocaleDateString('en-IN')+'</td>';
+    html+='<td style="white-space:nowrap">';
+    html+='<button class="btn btn-red btn-sm" style="margin-right:4px" onclick="deleteStudent(\''+s._id+'\',\''+esc(s.name)+'\')" title="Delete"><i class="fas fa-trash"></i></button>';
+    html+='<button class="btn btn-outline btn-sm" style="'+(mutedStudents[s._id]?'background:#c53030;color:#fff':'')+'" onclick="toggleMuteStudent(\''+esc(s.name)+'\',\''+s._id+'\')" id="mute-btn-'+s._id+'" title="'+(mutedStudents[s._id]?'Unmute student':'Mute in chat')+'"><i class="fas fa-microphone-slash"></i></button>';
+    html+='</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  c.innerHTML=html;
+}
+
+// CHEAT LOGS
+function loadCheatLogs(){
+  var c=document.getElementById('cheat-list');if(!c)return;
+  api('/api/push/cheat-logs').then(function(logs){
+    if(!logs.length){c.innerHTML='<p style="text-align:center;color:#888;padding:28px">No cheating reports yet.</p>';return;}
+    var html='';
+    logs.forEach(function(l){
+      html+='<div class="cheat-item"><div style="display:flex;justify-content:space-between;align-items:flex-start"><h4><i class="fas fa-exclamation-triangle"></i> '+esc(l.userName)+' - '+l.violations+' violation(s) '+(l.autoSubmitted?'<span style="background:#fee2e2;color:#c53030;padding:1px 6px;border-radius:4px;font-size:10px">AUTO-SUBMITTED</span>':'')+'</h4><button class="btn btn-red btn-sm" style="flex-shrink:0;margin-left:8px" onclick="deleteCheatLog(\'' + l._id + '\')" ><i class="fas fa-times"></i></button></div>';
+      html+='<p><i class="fas fa-envelope" style="margin-right:4px"></i>'+esc(l.userEmail)+'</p>';
+      html+='<p><i class="fas fa-file-alt" style="margin-right:4px"></i>'+esc(l.testTitle||'-')+'</p>';
+      html+='<p><i class="fas fa-info-circle" style="margin-right:4px"></i>'+esc(l.details||'-')+' - '+new Date(l.createdAt).toLocaleString('en-IN')+'</p></div>';
+    });
+    c.innerHTML=html;
+  }).catch(function(err){c.innerHTML='<p style="color:#c53030">'+esc(err.message)+'</p>';});
+}
+
+// MUTE STUDENT IN CHAT
+var mutedStudents={}; // seeded from the server on load — see refreshMutedStudents()
+function toggleMuteStudent(name, id){
+  var isMuted=!!mutedStudents[id];
+  mutedStudents[id]=!isMuted;
+  var newState=mutedStudents[id];
+  // Broadcast to all clients via socket
+  if(window.adminSocket){
+    window.adminSocket.emit('admin-block-student',{name:name,uid:id,blocked:newState});
+  }
+  // Students-table button
+  var btn=document.getElementById('mute-btn-'+id);
+  if(btn){
+    btn.style.background=newState?'#c53030':'';
+    btn.style.color=newState?'#fff':'';
+    btn.title=newState?'Unmute student':'Mute in chat';
+  }
+  // Every inline mute button in the chat window for this same student (they
+  // may have sent several messages, each with its own button)
+  document.querySelectorAll('.chat-mute-btn[data-uid="'+id+'"]').forEach(function(b){
+    b.style.background=newState?'#c53030':'';
+    b.style.color=newState?'#fff':'';
+    b.title=newState?'Unmute in chat':'Mute in chat';
+  });
+  toast(newState?name+' muted in chat':name+' unmuted','success');
+}
+
+// DELETE STUDENT
+function recomputeUserStats(){
+  if(!confirm('Recalculate every student\'s stats from their actual results? This can take a moment for a large student list.'))return;
+  api('/api/admin/recompute-user-stats',{method:'POST'}).then(function(r){toast(r.message,'success');}).catch(function(e){toast(e.message,'error');});
+}
+function deleteStudent(id, name){
+  if(!confirm('Delete student "'+name+'" and all their results? Cannot be undone.'))return;
+  api('/api/admin/students/'+id,{method:'DELETE'}).then(function(){
+    toast('Student deleted','success');loadAdminStudents();
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+// DELETE BATCH
+function deleteBatch(batch){
+  var label={'11':'Class 11','12':'Class 12','dropper':'Dropper'}[batch];
+  if(!confirm('DELETE ALL '+label+' STUDENTS AND RESULTS? Cannot be undone.'))return;
+  if(!confirm('100% sure? ALL '+label+' data will be permanently removed.'))return;
+  api('/api/admin/students/batch/'+batch,{method:'DELETE'}).then(function(r){
+    toast('Deleted '+r.deletedStudents+' students and '+r.deletedResults+' results','success');
+    loadAdminStudents();
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+// DELETE CHEAT LOG
+function deleteCheatLog(id){
+  api('/api/push/cheat-logs?id='+id,{method:'DELETE'}).then(function(){
+    toast('Log deleted','success');loadCheatLogs();
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+// CLEAR ALL CHEAT LOGS
+function clearAllCheatLogs(){
+  if(!confirm('Clear ALL cheating logs? Cannot be undone.'))return;
+  api('/api/push/cheat-logs',{method:'DELETE'}).then(function(r){
+    toast('Cleared '+r.deleted+' logs','success');loadCheatLogs();
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+// ADMIN SEND CHAT
+function adminSendChat(){
+  var inp=document.getElementById('admin-chat-input');
+  var text=(inp?inp.value:'').trim();
+  if(!text){toast('Enter a message','error');return;}
+  if(!window.adminSocket){
+    window.adminSocket=io({withCredentials:true,transports:['polling']});
+    window.adminSocket.on('chat-message',function(msg){appendAdminChatMsg(msg);});
+  }
+  window.adminSocket.emit('chat-message',{name:'Admin',batch:'',text:text,isAdmin:true});
+  if(inp)inp.value='';
+}
+function appendAdminChatMsg(msg){
+  var box=document.getElementById('admin-chat-box');if(!box)return;
+  var empty=box.querySelector('p');if(empty&&box.children.length===1)box.innerHTML='';
+  var div=document.createElement('div');
+  div.setAttribute('data-msgid',String(msg._id||msg.id||''));
+  div.style.cssText='padding:7px 11px;border-radius:10px;max-width:85%;word-break:break-word;font-size:13px;align-self:flex-start;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;'+(msg.isAdmin?'background:#fef3c7;border:1px solid #f0c040':'background:#fff;border:1px solid #e2e8f0');
+  var msgId=msg._id||msg.id;
+  // Mute button for the sender, right inside the chat window — lets admin
+  // mute someone directly off a message they're reading, without switching
+  // to the Students tab and searching for that name. Not shown for Admin's
+  // own messages (msg.uid is only set for student messages — see server.js).
+  var muteBtn='';
+  if(!msg.isAdmin&&msg.uid){
+    var isMuted=!!mutedStudents[msg.uid];
+    muteBtn='<button class="chat-mute-btn" data-uid="'+esc(msg.uid)+'" onclick="toggleMuteStudent(\''+esc(msg.name)+'\',\''+esc(msg.uid)+'\')" title="'+(isMuted?'Unmute in chat':'Mute in chat')+'" style="background:'+(isMuted?'#c53030':'none')+';color:'+(isMuted?'#fff':'#4a5568')+';border:none;cursor:pointer;font-size:12px;flex-shrink:0;border-radius:4px;padding:2px 5px"><i class="fas fa-microphone-slash"></i></button>';
+  }
+  div.innerHTML='<span><span style="font-weight:700;font-size:11px;color:'+(msg.isAdmin?'#b7791f':'#4a5568')+'">'+(msg.isAdmin?'👑 Admin':esc(msg.name)+' <span style="opacity:0.6;font-weight:400">('+esc(msg.batch)+')</span>')+'</span> <span style="opacity:0.5;font-size:10px">'+msg.time+'</span><br>'+esc(msg.text)+'</span>'+
+    '<span style="display:flex;gap:4px;flex-shrink:0">'+muteBtn+
+    (msgId?'<button onclick="deleteChatMsg(\''+msgId+'\')" title="Delete" style="background:none;border:none;color:#c53030;cursor:pointer;font-size:12px"><i class="fas fa-trash"></i></button>':'')+
+    '</span>';
+  box.appendChild(div);
+  box.scrollTop=box.scrollHeight;
+}
+function deleteChatMsg(id){
+  if(!confirm('Delete this message?'))return;
+  api('/api/chat/messages/'+id,{method:'DELETE'}).then(function(){
+    var el=document.querySelector('[data-msgid="'+id+'"]');if(el)el.remove();
+  }).catch(function(e){toast(e.message,'error');});
+}
+function clearAllChat(){
+  if(!confirm('Delete ALL chat messages permanently? This cannot be undone.'))return;
+  api('/api/chat/messages',{method:'DELETE'}).then(function(r){
+    toast('Cleared '+(r.deleted||0)+' messages','success');
+    var box=document.getElementById('admin-chat-box');
+    if(box)box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>';
+  }).catch(function(e){toast(e.message,'error');});
+}
+function initAdminChat(){
+  if(window.adminSocket)return;
+  // Load persisted history from the server (second Mongo DB — stays until an admin deletes it)
+  var box=document.getElementById('admin-chat-box');
+  if(box)box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Loading messages...</p>';
+  // Seed mutedStudents FIRST so the inline mute button on each message
+  // (added in appendAdminChatMsg) reflects real state right away, even if
+  // admin opens this tab without ever visiting the Students tab first.
+  refreshMutedStudents().then(function(){
+    return api('/api/chat/messages');
+  }).then(function(msgs){
+    if(!box)return;
+    box.innerHTML='';
+    if(!msgs.length){box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>';return;}
+    msgs.forEach(function(m){appendAdminChatMsg(m);});
+  }).catch(function(){
+    if(box)box.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Could not load chat history.</p>';
+  });
+
+  window.adminSocket=io({withCredentials:true,transports:['polling']});
+  window.adminSocket.on('chat-message',function(msg){appendAdminChatMsg(msg);});
+  window.adminSocket.on('chat-message-deleted',function(d){
+    var el=document.querySelector('[data-msgid="'+d.id+'"]');if(el)el.remove();
+  });
+  window.adminSocket.on('chat-cleared',function(){
+    var b=document.getElementById('admin-chat-box');
+    if(b)b.innerHTML='<p style="text-align:center;color:#888;font-size:12px;margin:auto">Chat messages appear here in real-time.</p>';
+  });
+  window.adminSocket.on('connect',function(){console.log('[AIITS Admin] Chat connected');});
+}
+
+// STUDENT FEATURE SWITCHES (Tools tab / Ask AI)
+function loadFeatureFlags(){
+  api('/api/admin/features').then(function(f){
+    var t=document.getElementById('feat-tools'),a=document.getElementById('feat-ai');
+    if(t){t.checked=!!f.tools;t.disabled=false;}
+    if(a){a.checked=!!f.aiAnalytics;a.disabled=false;}
+    var st=document.getElementById('feat-status');if(st)st.textContent='';
+  }).catch(function(e){var st=document.getElementById('feat-status');if(st)st.textContent='Could not load: '+e.message;});
+}
+function saveFeature(key,box){
+  var body={};body[key]=box.checked;box.disabled=true;
+  api('/api/admin/features',{method:'PUT',body:JSON.stringify(body)}).then(function(f){
+    box.checked=!!f[key];box.disabled=false;
+    toast((key==='tools'?'Tools tab':'Ask AI')+(box.checked?' enabled':' disabled')+' for students','success');
+  }).catch(function(e){box.checked=!box.checked;box.disabled=false;toast(e.message,'error');});
+}
+
+// ADMIN CHAT MUTE TOGGLE
+function adminToggleMute(){
+  api('/api/chat/mute',{method:'POST'}).then(function(r){
+    var btn=document.getElementById('mute-chat-btn');
+    var stat=document.getElementById('mute-status');
+    if(stat)stat.textContent='Status: '+(r.muted?'🔇 Muted — students cannot send messages':'🔊 Open — students can chat');
+    if(btn)btn.innerHTML=r.muted?'<i class="fas fa-microphone"></i> Unmute Chat':'<i class="fas fa-microphone-slash"></i> Mute Chat';
+    toast(r.muted?'Chat muted':'Chat unmuted','success');
+  }).catch(function(e){toast(e.message,'error');});
+}
+
+// ADMIN LEADERBOARD
+var adminLbMode='overall', adminLbBatch='';
+function setAdminLbMode(mode){
+  adminLbMode=mode;adminLbBatch='';
+  ['overall','normalised'].forEach(function(m){var el=document.getElementById('albm-'+m);if(el)el.classList.toggle('active',m===mode);});
+  var bf=document.getElementById('admin-lb-batch-filter');if(bf)bf.style.display=mode==='normalised'?'none':'flex';
+  ['all','11','12','dropper'].forEach(function(b){var el=document.getElementById('albf-'+b);if(el)el.classList.toggle('active',b===''||b===adminLbBatch);});
+  loadAdminLb('');
+}
+function loadAdminLb(batch){
+  if(batch!==undefined)adminLbBatch=batch;
+  ['all','11','12','dropper'].forEach(function(b){var el=document.getElementById('albf-'+b);if(el)el.classList.toggle('active',(b===''&&adminLbBatch==='')||(b===adminLbBatch));});
+  var c=document.getElementById('admin-lb-table');if(!c)return;
+  c.innerHTML='<p style="color:#888;padding:12px">Loading...</p>';
+  var url=adminLbMode==='normalised'?'/api/leaderboard/normalised':'/api/leaderboard/overall?batch='+adminLbBatch;
+  api(url).then(function(data){
+    if(!data.length){c.innerHTML='<p style="color:#888;padding:12px">No data yet.</p>';return;}
+    var medal=['🥇','🥈','🥉'];
+    c.innerHTML='<table class="data-table"><thead><tr><th>Rank</th><th>Name</th><th>Batch</th><th>Coaching</th><th>Tests</th><th>Score %</th><th>Marks</th><th>Time</th></tr></thead><tbody>'+
+      data.map(function(u,i){
+        var mins=Math.floor((u.totalTime||0)/60),secs=((u.totalTime||0)%60).toString().padStart(2,'0');
+        return '<tr><td>'+(medal[i]||i+1)+'</td><td>'+esc(u.name)+'</td><td>'+esc(u.batch||'--')+'</td><td>'+esc(u.coachingName||'--')+'</td><td>'+u.testCount+'</td><td><strong>'+u.percentage+'%</strong></td><td>'+u.totalObtained+'/'+u.totalPossible+'</td><td>'+mins+'m '+secs+'s</td></tr>';
+      }).join('')+'</tbody></table>';
+  }).catch(function(e){c.innerHTML='<p style="color:#c53030">'+esc(e.message)+'</p>';});
+}
+
+// Load chat mute status on page load
+function loadChatStatus(){
+  fetch('/api/chat/status').then(function(r){return r.json();}).then(function(d){
+    var stat=document.getElementById('mute-status');
+    var btn=document.getElementById('mute-chat-btn');
+    if(stat)stat.textContent='Status: '+(d.muted?'🔇 Muted':'🔊 Open');
+    if(btn)btn.innerHTML=d.muted?'<i class="fas fa-microphone"></i> Unmute Chat':'<i class="fas fa-microphone-slash"></i> Mute Chat';
+  }).catch(function(){});
+}
+
+// ANALYTICS
+function loadAdminStats(){
+  api('/api/admin/stats').then(function(s){
+    setEl('an-tests',s.totalTests);setEl('an-students',s.totalStudents);setEl('an-attempts',s.totalAttempts);
+    var sc=document.getElementById('storage-info');if(!sc)return;
+    if(s.storageInfo){
+      var si=s.storageInfo;var clr=si.usedPct>80?'#c53030':si.usedPct>60?'#d97706':'#276749';
+      sc.innerHTML='<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px"><span><strong>'+si.usedMB+'MB</strong> of <strong>'+si.totalMB+'MB</strong></span><span style="color:'+clr+'"><strong>'+si.usedPct+'%</strong></span></div>'+
+        '<div style="height:10px;background:#e5dfd0;border-radius:5px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+si.usedPct+'%;background:'+clr+';border-radius:5px"></div></div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;color:#888">'+si.freesMB+'MB free</span>'+
+        '<a href="https://cloud.mongodb.com" target="_blank" class="btn btn-outline btn-sm" style="font-size:11px"><i class="fas fa-arrow-up"></i> Upgrade</a></div>'+
+        (si.usedPct>75?'<p style="font-size:11px;color:#c53030;margin-top:6px"><i class="fas fa-exclamation-triangle"></i> Storage above 75%. Consider deleting old results or upgrading.</p>':'');
+    } else {
+      sc.innerHTML='<span style="font-size:12px;color:#888">Storage info unavailable. <a href="https://cloud.mongodb.com" target="_blank">Check MongoDB Atlas</a></span>';
+    }
+  }).catch(function(){});
+}
+function loadAdminLeaderboard(batch){
+  ['all','11','12','dropper'].forEach(function(b){var el=document.getElementById('alf-'+b);if(el)el.classList.toggle('active',(batch===''&&b==='all')||(batch===b));});
+  var c=document.getElementById('admin-leaderboard');if(!c)return;
+  api('/api/rankings/leaderboard?batch='+batch).then(function(data){
+    if(!data.length){c.innerHTML='<p style="text-align:center;color:#888;padding:24px">No data yet.</p>';return;}
+    var bMap={'11':'11th','12':'12th','dropper':'Drop'};
+    var html='<div style="overflow-x:auto"><table class="rank-table"><thead><tr><th>Rank</th><th>Name</th><th>Email</th><th>Coaching</th><th>Batch</th><th>Tests</th><th>Total</th><th>Highest</th></tr></thead><tbody>';
+    data.slice(0,100).forEach(function(u,i){
+      html+='<tr><td>'+(i+1)+'</td><td>'+esc(u.name)+'</td><td style="font-size:10px">'+esc(u.email||'-')+'</td><td>'+esc(u.coachingName||'-')+'</td><td>'+(bMap[u.batch]||'-')+'</td><td>'+u.totalTests+'</td><td style="font-family:monospace;color:#b8860b">'+u.totalMarks+'</td><td style="font-family:monospace">'+u.highestMarks+'</td></tr>';
+    });
+    html+='</tbody></table></div>';
+    c.innerHTML=html;
+  }).catch(function(){});
+}
+
+// PUSH
+function sendAnnouncement(){
+  var title=gv('ann-title'),body=gv('ann-body'),url=gv('ann-url');
+  if(!title||!body){toast('Title and message required','error');return;}
+  api('/api/push/announce',{method:'POST',body:JSON.stringify({title:title,body:body,url:url})}).then(function(r){
+    toast('Sent to '+r.sent+' devices!','success');
+  }).catch(function(err){toast(err.message,'error');});
+}
+
+// EMAIL TEST
+function testEmailConfig(){
+  var addr=gv('test-email-addr');if(!addr){toast('Enter an email address','error');return;}
+  var res=document.getElementById('email-test-result');
+  if(res){res.style.display='block';res.style.background='#f0f0f0';res.innerHTML='<i class="fas fa-spinner fa-spin"></i> Sending test email...';}
+  api('/api/auth/test-email?to='+encodeURIComponent(addr)).then(function(r){
+    if(res){res.style.background='#dcfce7';res.style.color='#15803d';res.innerHTML='<i class="fas fa-check-circle"></i> '+r.message;}
+    toast('Test email sent! Check inbox.','success');
+  }).catch(function(err){
+    if(res){res.style.background='#fee2e2';res.style.color='#c53030';res.innerHTML='<i class="fas fa-times-circle"></i> FAILED: '+(err.message||'Unknown error')+'<br><small>Check EMAIL_USER and EMAIL_PASS in Render env vars.</small>';}
+    toast('Email failed: '+(err.message),'error',8000);
+  });
+}
+</script>
+<script>
+(function(){var s=document.createElement('script');s.src='/socket.io/socket.io.js';s.async=true;document.body.appendChild(s);})();
+</script>
+</body>
+</html>

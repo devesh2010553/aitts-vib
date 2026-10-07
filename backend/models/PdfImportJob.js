@@ -1,0 +1,96 @@
+const chatDb = require('../config/chatDb');
+const { Schema } = require('mongoose');
+// Moved to the MONGODB_URI2 connection — a single import job's base64
+// payload (original PDF + rendered page images) can run several MB, and
+// this collection was the single biggest new source of storage pressure on
+// the main database. createdTestId still stores a plain ObjectId reference
+// to a Test on the MAIN connection — that's fine, it's just an id value, no
+// cross-connection populate is ever attempted on it (see routes/aiImport.js,
+// which returns createdTestId as-is and lets the frontend fetch the real
+// Test via the normal /api/admin/tests/:id route on the main connection).
+
+// Intermediate representation for one detected question — kept separate from
+// the actual Test/questionSchema (backend/dynamo/testModel.js) until the teacher
+// reviews it, because it needs fields (confidence, source page range, raw
+// asset refs) that have no business living in the real Test schema forever.
+const draftQuestionSchema = new Schema({
+  number:        { type: Number },              // original question number from the PDF, if detected
+  pageStart:     { type: Number },
+  pageEnd:       { type: Number },
+  questionText:  { type: String, default: '' },
+  questionImage: { type: String, default: '' },  // Cloudinary URL (data-URI fallback if Cloudinary is unconfigured) — same convention as Test.questionSchema
+  options: [{
+    label:     { type: String },                  // original label as printed (A/B/1/i) — kept for teacher review, not required by Test schema
+    text:      { type: String, default: '' },
+    imageData: { type: String, default: '' },
+    isCorrect: { type: Boolean, default: false },
+  }],
+  questionType:   { type: String, default: 'mcq' }, // mcq | multi | numerical | assertion-reason | true-false | subjective | other
+  isMultiChoice:  { type: Boolean, default: false },
+  marks:          { type: Number, default: null },  // null = not detected in PDF, teacher must confirm (see #31 — never invent marks)
+  negativeMarks:  { type: Number, default: null },
+  answerDetected: { type: Boolean, default: false }, // true only if an answer key entry mapped to this question
+  confidence:     { type: String, enum: ['high', 'review', 'low'], default: 'high' },
+  flags:          [{ type: String }],               // human-readable reasons for a non-"high" confidence, e.g. "option count uncertain"
+}, { _id: false });
+
+const pdfImportJobSchema = new Schema({
+  status: { type: String, enum: ['queued', 'processing', 'done', 'failed', 'cancelled'], default: 'queued' },
+  stage:  { type: String, default: 'Queued' }, // human-readable current stage, shown in the progress UI
+  error:  { type: String, default: '' },
+
+  fileName: { type: String, default: '' },
+  fileHash: { type: String, index: true }, // sha256 — duplicate-import detection (#44)
+  pageCount: { type: Number, default: 0 },
+
+  // What was actually uploaded — a single PDF, or one-or-more standalone
+  // image files (e.g. phone photos of each page of a question paper).
+  // Everything downstream (importQueue.js's extraction step) produces the
+  // exact same shape either way, so nothing past this field cares which it
+  // was.
+  sourceType: { type: String, enum: ['pdf', 'images'], default: 'pdf' },
+
+  // Original PDF, kept for teacher side-by-side reference (#25).
+  // PREFERRED: pdfUrl — a Cloudinary `raw` resource URL, a few bytes in Mongo.
+  // FALLBACK: pdfBase64 — only written when Cloudinary isn't configured, and
+  // still read for jobs created before the Cloudinary switch. Always read the
+  // PDF through getJobPdfBuffer() (utils/importQueue.js), never these directly.
+  // Only populated when sourceType === 'pdf'.
+  pdfUrl:      { type: String, default: '' },
+  pdfPublicId: { type: String, default: '' }, // needed to mint a signed URL if public delivery of raw/PDF is disabled on the account
+  pdfBase64:   { type: String, default: '' },
+
+  // Original source photos, in page order — only populated when
+  // sourceType === 'images'. Same Cloudinary-preferred/base64-fallback
+  // convention as the PDF fields above; read through getJobImageBuffers()
+  // (utils/importQueue.js), never these directly.
+  sourceImages: [{
+    url:      { type: String, default: '' },
+    publicId: { type: String, default: '' },
+    base64:   { type: String, default: '' }, // only set when Cloudinary isn't configured
+  }],
+
+  questionsDetected:  { type: Number, default: 0 },
+  totalQuestionsGuess:{ type: Number, default: 0 }, // rough estimate for progress display, not exact
+  imagesDetected:     { type: Number, default: 0 },
+  tablesDetected:      { type: Number, default: 0 },
+  mathDetected:        { type: Number, default: 0 },
+
+  questions: [draftQuestionSchema],
+
+  createdTestId: { type: String, default: null }, // DynamoDB Test.testId string (e.g. "test_<uuid>") — was Schema.Types.ObjectId with a ref:'Test', which would have thrown a cast error against a non-ObjectId string the moment Test moved to DynamoDB
+  createdBy:     { type: String, default: '' }, // admin identifier, informational only
+
+}, { timestamps: true });
+
+// TTL: import jobs are working data, not a permanent record — once a draft
+// Test exists the job itself has served its purpose. Auto-expire finished
+// jobs after 14 days so this collection doesn't grow unbounded (originals
+// PDFs included). Only applies to done/failed jobs via a partial filter so
+// an in-progress job is never accidentally cleaned up mid-run.
+pdfImportJobSchema.index(
+  { updatedAt: 1 },
+  { expireAfterSeconds: 14 * 24 * 60 * 60, partialFilterExpression: { status: { $in: ['done', 'failed', 'cancelled'] } } }
+);
+
+module.exports = chatDb.model('PdfImportJob', pdfImportJobSchema);

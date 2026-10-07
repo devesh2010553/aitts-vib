@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<title>AIITS  Ad Manager</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="canonical" href="https://aitts.in/ad856eyqafggg">
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3517811725655802" crossorigin="anonymous"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{--gold:#b8860b;--gold-light:#d4a017;--gold-pale:#fdf6e3;--gold-border:rgba(184,134,11,0.25);--gold-glow:rgba(184,134,11,0.12);--bg:#fafaf8;--border:#e5dfd0;--text:#1a1a1a;--text-sec:#555;--text-muted:#888;--red:#c53030;--red-light:rgba(197,48,48,0.1);--green:#276749;--green-light:rgba(39,103,73,0.1);--radius:12px;--radius-sm:8px;--shadow:0 2px 16px rgba(0,0,0,0.08);--shadow-md:0 4px 24px rgba(0,0,0,0.12);--font:"DM Sans",sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh}
+input,textarea,select{width:100%;padding:10px 14px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:#fff;color:var(--text);font-family:var(--font);font-size:14px;outline:none;transition:0.2s}
+input:focus,textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-glow)}
+textarea{resize:vertical}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:var(--radius-sm);font-family:var(--font);font-weight:600;font-size:14px;cursor:pointer;border:none;transition:0.2s;white-space:nowrap}
+.btn-gold{background:linear-gradient(135deg,var(--gold-light),var(--gold));color:#fff}
+.btn-gold:hover:not(:disabled){filter:brightness(1.08)}
+.btn-gold:disabled{opacity:0.6;cursor:not-allowed}
+.btn-outline{background:transparent;border:1.5px solid var(--gold);color:var(--gold)}
+.btn-outline:hover{background:var(--gold-glow)}
+.btn-ghost{background:#f0ebe0;color:var(--text-sec);border:1.5px solid var(--border)}
+.btn-red{background:var(--red);color:#fff}
+.btn-sm{padding:6px 12px;font-size:13px}
+.btn-full{width:100%;justify-content:center}
+.hidden{display:none!important}
+#toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:11px 16px;font-size:13px;min-width:240px;display:flex;align-items:center;gap:9px;box-shadow:var(--shadow-md);animation:slideIn 0.3s ease;border-left:4px solid var(--gold)}
+.toast.success{border-left-color:var(--green)}.toast.error{border-left-color:var(--red)}
+@keyframes slideIn{from{transform:translateX(110%);opacity:0}to{transform:translateX(0);opacity:1}}
+/* LOGIN */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(160deg,#1a1a2e,#16213e);padding:24px}
+.login-card{background:#fff;border-radius:var(--radius);padding:40px 36px;width:100%;max-width:380px;box-shadow:var(--shadow-md)}
+.login-logo{font-size:36px;font-weight:900;color:var(--gold);text-align:center;margin-bottom:4px;letter-spacing:3px}
+.login-sub{text-align:center;color:var(--text-muted);font-size:12px;margin-bottom:24px}
+.fg{margin-bottom:14px}
+.fg label{display:block;font-size:11px;font-weight:700;color:var(--text-sec);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.5px}
+.pw-wrap{position:relative}
+.pw-wrap input{padding-right:40px}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:15px;padding:0}
+/* MAIN */
+.topbar{background:linear-gradient(135deg,var(--gold-light),var(--gold));padding:12px 24px;display:flex;align-items:center;justify-content:space-between}
+.topbar-logo{font-size:18px;font-weight:900;color:#0a0a1a;letter-spacing:2px}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.main-wrap{max-width:1100px;margin:0 auto;padding:24px 20px 60px}
+.section-title{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);padding:22px;margin-bottom:20px}
+.card-title{font-size:12px;font-weight:700;color:var(--text-sec);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;display:flex;align-items:center;gap:7px}
+.form-2col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.upload-zone{border:2px dashed var(--gold-border);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;background:var(--gold-pale);margin-bottom:14px;transition:0.2s}
+.upload-zone:hover{border-color:var(--gold);background:var(--gold-glow)}
+/* AD CARDS GRID */
+.ads-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.ad-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:0.2s}
+.ad-card:hover{border-color:var(--gold-border);box-shadow:var(--shadow)}
+.ad-card-img{width:100%;height:140px;object-fit:cover;display:block}
+.ad-card-img-placeholder{width:100%;height:140px;background:#f0ebe0;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:32px}
+.ad-card-body{padding:12px}
+.ad-card-title{font-size:13px;font-weight:700;margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ad-card-sub{font-size:11px;color:var(--text-muted);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ad-card-badges{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap}
+.badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px}
+.badge-active{background:var(--green-light);color:var(--green)}
+.badge-inactive{background:var(--red-light);color:var(--red)}
+.badge-home{background:#dbeafe;color:#1e40af}
+.ad-card-actions{display:flex;gap:6px;flex-wrap:wrap}
+/* PREVIEW MODAL */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
+.modal-box{background:#fff;border-radius:var(--radius);padding:24px;max-width:500px;width:100%;box-shadow:var(--shadow-md);max-height:90vh;overflow-y:auto}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.modal-close{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text-muted);line-height:1}
+/* SLIDESHOW PREVIEW */
+.preview-slide{border-radius:var(--radius-sm);overflow:hidden;border:1.5px solid var(--border);margin-bottom:10px;position:relative}
+.preview-slide img{width:100%;display:block;max-height:240px;object-fit:contain;background:#111}
+.preview-caption{padding:8px 12px;background:#f5f5f5;font-size:12px;color:var(--text-sec)}
+/* TOGGLE */
+.tog{position:relative;display:inline-block;width:40px;height:21px}
+.tog input{opacity:0;width:0;height:0}
+.tog-sl{position:absolute;inset:0;background:var(--border);border-radius:21px;cursor:pointer;transition:0.2s}
+.tog-sl::before{content:"";position:absolute;width:15px;height:15px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:0.2s}
+.tog input:checked+.tog-sl{background:var(--gold)}
+.tog input:checked+.tog-sl::before{transform:translateX(19px)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.skel{background:linear-gradient(90deg,#f0ebe0 25%,#e5dfd0 50%,#f0ebe0 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius);height:200px}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+@media(max-width:600px){.form-2col{grid-template-columns:1fr}.main-wrap{padding:16px 12px 60px}}
+</style>
+</head>
+<body>
+<div id="toast-container"></div>
+
+<!-- LOGIN -->
+<div id="login-wrap" class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">AIITS</div>
+    <p class="login-sub">Ad Manager  Admin Access Only</p>
+    <div style="font-size:36px;color:var(--gold);text-align:center;margin-bottom:20px"><i class="fas fa-bullhorn"></i></div>
+    <div class="fg"><label>Admin Email</label><input type="email" id="ad-email" placeholder="admin@email.com" onkeydown="if(event.key==='Enter')adLogin()"></div>
+    <div class="fg">
+      <label>Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="ad-pass" placeholder="password" onkeydown="if(event.key==='Enter')adLogin()">
+        <button type="button" class="pw-toggle" onclick="var el=document.getElementById('ad-pass');var show=el.type==='password';el.type=show?'text':'password';this.innerHTML=show?'<i class=\'fas fa-eye-slash\'></i>':'<i class=\'fas fa-eye\'></i>'"><i class="fas fa-eye"></i></button>
+      </div>
+    </div>
+    <button class="btn btn-gold btn-full" onclick="adLogin()" id="ad-login-btn" style="margin-top:8px"><i class="fas fa-lock-open"></i> Login</button>
+  </div>
+</div>
+
+<!-- AD MANAGER -->
+<div id="ad-manager" class="hidden">
+  <div class="topbar">
+    <div>
+      <div class="topbar-logo">AIITS  Ad Manager</div>
+      <div style="font-size:10px;color:rgba(0,0,0,0.65)">Manage advertisements shown before tests</div>
+    </div>
+    <div class="topbar-right">
+      <a href="/adminvibacdonlineaiits" class="btn btn-ghost btn-sm"><i class="fas fa-cog"></i> Main Admin</a>
+      <button class="btn btn-ghost btn-sm" onclick="adLogout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+    </div>
+  </div>
+
+  <div class="main-wrap">
+
+    <!-- CREATE NEW AD -->
+    <div class="card">
+      <div class="card-title"><i class="fas fa-plus-circle" style="color:var(--gold)"></i> Create New Advertisement</div>
+      <div class="upload-zone" onclick="document.getElementById('ad-img-input').click()">
+        <i class="fas fa-image" style="font-size:28px;color:var(--gold);display:block;margin-bottom:8px"></i>
+        <strong style="display:block;margin-bottom:3px">Click to upload ad image</strong>
+        <span style="font-size:11px;color:var(--text-muted)">JPG, PNG, WebP  max 8MB. This image shows to students before their test starts.</span>
+      </div>
+      <input type="file" id="ad-img-input" accept="image/*" style="display:none" onchange="previewAdImg(this)">
+      <div id="ad-img-preview" style="display:none;margin-bottom:14px">
+        <img id="ad-img-preview-src" src="" alt="" style="max-height:180px;border-radius:8px;border:1.5px solid var(--border);display:block">
+        <button class="btn btn-ghost btn-sm" style="margin-top:6px" onclick="clearAdImgPreview()"><i class="fas fa-times"></i> Remove</button>
+      </div>
+      <div class="form-2col">
+        <div class="fg"><label>Ad Title *</label><input type="text" id="ad-title" placeholder="e.g. JEE 2026 Batch Announcement"></div>
+        <div class="fg"><label>Description (shown on image)</label><input type="text" id="ad-desc" placeholder="Short caption..."></div>
+      </div>
+      <div class="fg"><label>Click URL (optional  students clicking image go here)</label><input type="url" id="ad-link" placeholder="https://... (leave blank if no link)"></div>
+      <div class="toggle-row">
+        <label style="font-size:13px;cursor:pointer">Show in Home Page Gallery &amp; Student Gallery</label>
+        <label class="tog"><input type="checkbox" id="ad-show-home" checked><span class="tog-sl"></span></label>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-gold" onclick="createAd()" id="create-ad-btn"><i class="fas fa-save"></i> Save Advertisement</button>
+        <button class="btn btn-outline" onclick="previewAdSlideshow()"><i class="fas fa-eye"></i> Preview Slideshow</button>
+      </div>
+    </div>
+
+    <!-- HOW ADS WORK -->
+    <div class="card" style="background:var(--gold-pale);border-color:var(--gold-border)">
+      <div class="card-title" style="color:var(--gold)"><i class="fas fa-info-circle"></i> How Advertisements Work</div>
+      <div style="font-size:13px;color:var(--text-sec);line-height:1.8">
+        <p><strong>1.</strong> Upload images here. They appear in the student home page gallery and student gallery page automatically if "Show in Home Page Gallery" is on.</p>
+        <p><strong>2.</strong> To show an ad before a specific test: go to <a href="/adminvibacdonlineaiits" style="color:var(--gold)">Main Admin  Create/Edit Test</a>  enable "Ad Page"  select which images to show.</p>
+        <p><strong>3.</strong> When a student clicks "Attempt" on that test, they see the selected images as a slideshow (5 seconds each) before the test timer starts.</p>
+        <p><strong>4.</strong> Clicking an image opens the Click URL you set. Use this for coaching updates, announcements, sponsor links etc.</p>
+      </div>
+    </div>
+
+    <!-- ALL ADS -->
+    <div class="section-title"><i class="fas fa-images" style="color:var(--gold)"></i> All Advertisements <span id="ad-count" style="background:var(--gold);color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:999px;margin-left:6px">0</span></div>
+    <div id="ads-grid" class="ads-grid"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+
+  </div>
+</div>
+
+<!-- PREVIEW MODAL -->
+<div id="preview-modal" class="modal-bg hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 style="font-size:15px;font-weight:700"><i class="fas fa-eye" style="color:var(--gold)"></i> Ad Slideshow Preview</h3>
+      <button class="modal-close" onclick="document.getElementById('preview-modal').classList.add('hidden')">&times;</button>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin-bottom:14px">This is how students will see the ad page before a test. Each image shows for 5 seconds.</p>
+    <div id="preview-slides"></div>
+    <button class="btn btn-gold btn-full" style="margin-top:8px" onclick="document.getElementById('preview-modal').classList.add('hidden')">Close Preview</button>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div id="edit-modal" class="modal-bg hidden">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 style="font-size:15px;font-weight:700"><i class="fas fa-edit" style="color:var(--gold)"></i> Edit Advertisement</h3>
+      <button class="modal-close" onclick="document.getElementById('edit-modal').classList.add('hidden')">&times;</button>
+    </div>
+    <input type="hidden" id="edit-ad-id">
+    <div class="fg"><label>Title</label><input type="text" id="edit-ad-title" placeholder="Ad title"></div>
+    <div class="fg"><label>Description</label><input type="text" id="edit-ad-desc" placeholder="Caption"></div>
+    <div class="fg"><label>Click URL</label><input type="url" id="edit-ad-url" placeholder="https://..."></div>
+    <div class="toggle-row">
+      <label style="font-size:13px">Show in Home/Student Gallery</label>
+      <label class="tog"><input type="checkbox" id="edit-show-home"><span class="tog-sl"></span></label>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-gold btn-full" onclick="saveAdEdit()"><i class="fas fa-save"></i> Save Changes</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('edit-modal').classList.add('hidden')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var _adFile = null;
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function gv(id){var el=document.getElementById(id);return el?(el.value||'').trim():'';}
+function setEl(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
+function toast(msg,type,dur){
+  type=type||'info';dur=dur||3500;
+  var c=document.getElementById('toast-container');if(!c)return;
+  var t=document.createElement('div');t.className='toast '+(type||'');
+  t.innerHTML='<i class="fas '+(type==='success'?'fa-check-circle':'fa-exclamation-circle')+'" style="color:inherit"></i><span>'+msg+'</span>';
+  c.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(110%)';t.style.transition='0.3s';setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t);},300);},dur);
+}
+function api(url,opts){
+  opts=opts||{};
+  return fetch(url,{credentials:'include',headers:Object.assign({'Content-Type':'application/json'},opts.headers||{}),method:opts.method||'GET',body:opts.body||undefined}).then(function(res){
+    return res.json().then(function(data){if(!res.ok)throw new Error(data.error||('HTTP '+res.status));return data;});
+  });
+}
+
+//  LOGIN 
+window.addEventListener('load', function() {
+  // Check if already logged in as admin
+  api('/api/auth/admin-me').then(function(r) {
+    if (r && r.admin) showManager();
+    // else stay on login
+  }).catch(function() {});
+});
+
+function adLogin() {
+  var email = gv('ad-email'), pass = gv('ad-pass');
+  if (!email || !pass) { toast('Enter email and password', 'error'); return; }
+  var btn = document.getElementById('ad-login-btn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+  api('/api/auth/admin-login', { method: 'POST', body: JSON.stringify({ email: email, password: pass }) }).then(function() {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-lock-open"></i> Login';
+    showManager();
+  }).catch(function(err) {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-lock-open"></i> Login';
+    toast(err.message || 'Invalid credentials', 'error');
+  });
+}
+function adLogout() {
+  api('/api/auth/logout', { method: 'POST' }).catch(function(){});
+  document.getElementById('ad-manager').classList.add('hidden');
+  document.getElementById('login-wrap').style.display = 'flex';
+  toast('Logged out', 'info');
+}
+function showManager() {
+  document.getElementById('login-wrap').style.display = 'none';
+  document.getElementById('ad-manager').classList.remove('hidden');
+  loadAds();
+}
+
+//  IMAGE PREVIEW 
+function previewAdImg(input) {
+  _adFile = input.files[0];
+  if (!_adFile) return;
+  var r = new FileReader();
+  r.onload = function(e) {
+    var pw = document.getElementById('ad-img-preview');
+    var ps = document.getElementById('ad-img-preview-src');
+    if (pw && ps) { pw.style.display = 'block'; ps.src = e.target.result; }
+  };
+  r.readAsDataURL(_adFile);
+}
+function clearAdImgPreview() {
+  _adFile = null;
+  var pw = document.getElementById('ad-img-preview'); if (pw) pw.style.display = 'none';
+  var inp = document.getElementById('ad-img-input'); if (inp) inp.value = '';
+}
+
+//  CREATE AD 
+function createAd() {
+  var title = gv('ad-title');
+  if (!title) { toast('Title is required', 'error'); return; }
+  var btn = document.getElementById('create-ad-btn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  var fd = new FormData();
+  if (_adFile) fd.append('image', _adFile);
+  fd.append('title', title);
+  fd.append('description', gv('ad-desc'));
+  fd.append('redirectUrl', gv('ad-link'));
+  fd.append('showOnHome', (document.getElementById('ad-show-home') || {}).checked ? 'true' : 'false');
+
+  // If no image, save text-only ad (still useful for gallery text)
+  var saveUrl = '/api/admin/ad-images';
+  var method = 'POST';
+  var doFetch;
+  if (_adFile) {
+    doFetch = fetch(saveUrl, { method: method, credentials: 'include', body: fd });
+  } else {
+    doFetch = fetch(saveUrl, {
+      method: method, credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title, description: gv('ad-desc'), redirectUrl: gv('ad-link'), showOnHome: (document.getElementById('ad-show-home')||{}).checked !== false })
+    });
+  }
+  doFetch.then(function(r) { return r.json(); }).then(function(data) {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Advertisement';
+    if (data.error) throw new Error(data.error);
+    toast('Advertisement saved!', 'success');
+    clearAdImgPreview();
+    ['ad-title','ad-desc','ad-link'].forEach(function(id){var el=document.getElementById(id);if(el)el.value='';});
+    loadAds();
+  }).catch(function(err) {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> Save Advertisement';
+    toast(err.message || 'Save failed', 'error');
+  });
+}
+
+//  LOAD ADS 
+function loadAds() {
+  var g = document.getElementById('ads-grid'); if (!g) return;
+  api('/api/admin/ad-images').then(function(imgs) {
+    setEl('ad-count', imgs.length);
+    if (!imgs.length) { g.innerHTML = '<p style="color:var(--text-muted);padding:16px;grid-column:1/-1">No advertisements yet. Create your first above.</p>'; return; }
+    g.innerHTML = imgs.map(function(img) {
+      return '<div class="ad-card"><div>' +
+        (img.imageData
+          ? '<img class="ad-card-img" src="' + img.imageData + '" alt="' + esc(img.title||'') + '" loading="lazy">'
+          : '<div class="ad-card-img-placeholder"><i class="fas fa-file-alt"></i></div>') +
+        '</div><div class="ad-card-body">' +
+        '<div class="ad-card-title">' + esc(img.title || 'Untitled') + '</div>' +
+        (img.description ? '<div class="ad-card-sub">' + esc(img.description) + '</div>' : '') +
+        (img.redirectUrl ? '<div class="ad-card-sub" style="color:var(--gold)"><i class="fas fa-link" style="font-size:10px"></i> ' + esc(img.redirectUrl) + '</div>' : '') +
+        '<div class="ad-card-badges">' +
+        (img.showOnHome ? '<span class="badge badge-home">On Home</span>' : '<span class="badge badge-inactive">Hidden</span>') +
+        '</div>' +
+        '<div class="ad-card-actions">' +
+        '<button class="btn btn-outline btn-sm" onclick="openEditModal(\'' + img._id + '\',\'' + esc(img.title||'').replace(/'/g,"\\'") + '\',\'' + esc(img.description||'').replace(/'/g,"\\'") + '\',\'' + esc(img.redirectUrl||'').replace(/'/g,"\\'") + '\',' + (img.showOnHome?'true':'false') + ')"><i class="fas fa-edit"></i> Edit</button>' +
+        '<button class="btn btn-red btn-sm" onclick="deleteAd(\'' + img._id + '\')"><i class="fas fa-trash"></i></button>' +
+        '</div></div></div>';
+    }).join('');
+  }).catch(function(err) { g.innerHTML = '<p style="color:var(--red);padding:16px">' + esc(err.message) + '</p>'; });
+}
+
+function deleteAd(id) {
+  if (!confirm('Delete this advertisement permanently?')) return;
+  api('/api/admin/ad-images/' + id, { method: 'DELETE' }).then(function() {
+    toast('Deleted', 'info'); loadAds();
+  }).catch(function(err) { toast(err.message, 'error'); });
+}
+
+function openEditModal(id, title, desc, url, showOnHome) {
+  document.getElementById('edit-ad-id').value = id;
+  document.getElementById('edit-ad-title').value = title;
+  document.getElementById('edit-ad-desc').value = desc;
+  document.getElementById('edit-ad-url').value = url;
+  var tog = document.getElementById('edit-show-home'); if (tog) tog.checked = showOnHome;
+  document.getElementById('edit-modal').classList.remove('hidden');
+}
+function saveAdEdit() {
+  var id = gv('edit-ad-id');
+  if (!id) return;
+  api('/api/admin/ad-images/' + id, {
+    method: 'PUT',
+    body: JSON.stringify({
+      title: gv('edit-ad-title'),
+      description: gv('edit-ad-desc'),
+      redirectUrl: gv('edit-ad-url'),
+      showOnHome: (document.getElementById('edit-show-home')||{}).checked !== false
+    })
+  }).then(function() {
+    toast('Updated!', 'success');
+    document.getElementById('edit-modal').classList.add('hidden');
+    loadAds();
+  }).catch(function(err) { toast(err.message, 'error'); });
+}
+
+//  PREVIEW SLIDESHOW 
+function previewAdSlideshow() {
+  api('/api/admin/ad-images').then(function(imgs) {
+    var c = document.getElementById('preview-slides'); if (!c) return;
+    if (!imgs.length) { c.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px">No images yet.</p>'; }
+    else {
+      c.innerHTML = imgs.map(function(img, i) {
+        return '<div class="preview-slide">' +
+          (img.imageData ? '<img src="' + img.imageData + '" alt="' + esc(img.title||'') + '">' : '<div style="height:120px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;color:#888"><i class="fas fa-file-alt" style="font-size:24px"></i></div>') +
+          '<div class="preview-caption"><strong>' + esc(img.title||'') + '</strong>' +
+          (img.description ? '  ' + esc(img.description) : '') +
+          (img.redirectUrl ? ' <span style="color:var(--gold)"> ' + esc(img.redirectUrl) + '</span>' : '') +
+          '<span style="float:right;color:var(--text-muted)">Slide ' + (i+1) + ' (5 sec)</span></div></div>';
+      }).join('') +
+      '<p style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:8px">Students see these images cycling (5 sec each) before the test starts. Countdown runs in parallel.</p>';
+    }
+    document.getElementById('preview-modal').classList.remove('hidden');
+  }).catch(function(err) { toast(err.message, 'error'); });
+}
+</script>
+</body>
+</html>

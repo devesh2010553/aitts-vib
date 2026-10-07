@@ -1,0 +1,287 @@
+/**
+ * routes/aiImport.js — "AI PDF Test Import" (spec #1-55).
+ * Admin/teacher only. Mounted at /api/admin/ai in server.js.
+ *
+ * Flow: upload -> background job (importQueue.js) -> poll status -> teacher
+ * reviews the structured result -> create-draft maps it into a normal Test
+ * document (isPublished:false) -> teacher opens it in the EXISTING test
+ * editor to fine-tune/publish. No parallel editor, no parallel publish path.
+ */
+const express = require('express');
+const router  = express.Router();
+const multer  = require('multer');
+const crypto  = require('crypto');
+const PdfImportJob = require('../models/PdfImportJob');
+const Test = require('../dynamo/testModel'); // was: const Test = require('../models/Test') — Test now lives on DynamoDB, not MongoDB
+const { authenticateAdmin } = require('../middleware/auth');
+const { sha256 } = require('../utils/pdfExtract');
+const aiProvider = require('../utils/aiProvider');
+const { enqueueImportJob, cancelImportJob, mapJobQuestionsToTestQuestions, getJobExtraction } = require('../utils/importQueue');
+const { uploadRawBuffer, uploadImageBase64, uploadSourceImageBuffer, uploadTestImages, signedRawUrl } = require('../utils/cloudinary');
+
+router.use(authenticateAdmin); // spec #38 — only authenticated admins/teachers, never students
+
+// Accepts EITHER a single PDF, or one-or-more ordinary image files (e.g.
+// phone photos of each page of a question paper, in order) — importQueue.js
+// treats both the same way past the initial extraction step
+// (pdfExtract.js's extractPdf() vs extractFromImages() produce the same
+// shape). Mixing a PDF with images in one upload isn't supported — a PDF is
+// always exactly one file, so more than one file present means "these are
+// all page photos."
+const IMAGE_MIMETYPES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/bmp', 'image/tiff']);
+// PDFs are naturally larger than the admin image-upload limit (8MB, see
+// admin.js) but still bounded — 25MB per file comfortably covers a
+// multi-page scanned question paper or a high-res phone photo while
+// keeping the resulting base64-in-Mongo fallback (see PdfImportJob.js)
+// well under MongoDB's 16MB document cap once extracted assets are added.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024, files: 30 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== 'application/pdf' && !IMAGE_MIMETYPES.has(file.mimetype)) {
+      return cb(new Error(`Unsupported file type: ${file.mimetype}. Upload a PDF or image files (jpg/jpeg/png/webp/gif/bmp/tiff).`));
+    }
+    cb(null, true);
+  },
+});
+
+// ── 1. Upload — creates a job, kicks off async processing, returns immediately (spec #36) ──
+router.post('/import-pdf', upload.array('files', 30), async (req, res) => {
+  try {
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ error: 'No file uploaded' });
+    if (!process.env.GROQ_API_KEY && !process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'AI PDF import is not configured on this server (set GROQ_API_KEY or GEMINI_API_KEY).' });
+    }
+
+    const isPdf = files.length === 1 && files[0].mimetype === 'application/pdf';
+    const isImages = files.every(f => IMAGE_MIMETYPES.has(f.mimetype));
+    if (!isPdf && !isImages) {
+      return res.status(400).json({ error: 'Upload either a single PDF, or one-or-more image files (jpg/jpeg/png/webp/gif/bmp/tiff) — not a mix of both.' });
+    }
+
+    // Hash across all files together so re-uploading the exact same set of
+    // photos (or the same PDF) is still caught by the duplicate-import check.
+    const hash = sha256(Buffer.concat(files.map(f => f.buffer)));
+    const existing = await PdfImportJob.findOne({ fileHash: hash }).select('_id fileName status createdTestId createdAt').lean();
+    if (existing && req.query.force !== 'true') {
+      // spec #44 — warn, don't block; teacher can force a re-import if intentional.
+      return res.status(409).json({
+        error: 'This file appears to have already been imported.',
+        existingJobId: existing._id, existingFileName: existing.fileName,
+        existingStatus: existing.status, existingTestId: existing.createdTestId, importedAt: existing.createdAt,
+      });
+    }
+
+    let job;
+    if (isPdf) {
+      const file = files[0];
+      // Store the original in Cloudinary (raw resource) and keep only the URL
+      // in Mongo. uploadRawBuffer returns null when Cloudinary isn't
+      // configured, in which case we fall back to the old inline-base64 path.
+      const stored = await uploadRawBuffer(file.buffer, file.originalname, 'aiits/imports/pdf');
+      job = await PdfImportJob.create({
+        status: 'queued', stage: 'Queued', sourceType: 'pdf',
+        fileName: file.originalname, fileHash: hash,
+        pdfUrl: (stored && stored.url) || '',
+        pdfPublicId: (stored && stored.publicId) || '',
+        pdfBase64: stored ? '' : file.buffer.toString('base64'),
+        createdBy: (req.admin && req.admin.email) || '',
+      });
+    } else {
+      // Upload every photo to Cloudinary in page order; fall back to
+      // per-image base64 in Mongo for any that fails or if Cloudinary isn't
+      // configured at all — same convention as the PDF path.
+      const sourceImages = [];
+      for (const file of files) {
+        const stored = await uploadSourceImageBuffer(file.buffer, file.originalname, 'aiits/imports/source-images');
+        sourceImages.push({
+          url: (stored && stored.url) || '',
+          publicId: (stored && stored.publicId) || '',
+          base64: stored ? '' : file.buffer.toString('base64'),
+        });
+      }
+      job = await PdfImportJob.create({
+        status: 'queued', stage: 'Queued', sourceType: 'images',
+        fileName: files.length === 1 ? files[0].originalname : `${files[0].originalname} (+${files.length - 1} more)`,
+        fileHash: hash, sourceImages,
+        createdBy: (req.admin && req.admin.email) || '',
+      });
+    }
+
+    // The queue is in-process, so hand the buffers we already have straight
+    // to the worker. The initial import then never round-trips to Cloudinary
+    // at all — only later reprocess/image-replace routes need to re-fetch.
+    const providedSource = isPdf ? files[0].buffer : files.map(f => f.buffer);
+    enqueueImportJob(job._id, providedSource); // not awaited — processing happens in the background, request returns now
+    res.status(202).json({ jobId: job._id, status: 'queued' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── 2. Lightweight poll — status/stage/counts only, no PDF/question payload (spec #37, #41) ──
+router.get('/import-status/:jobId', async (req, res) => {
+  try {
+    const job = await PdfImportJob.findById(req.params.jobId)
+      .select('status stage error pageCount questionsDetected totalQuestionsGuess imagesDetected tablesDetected createdTestId fileName')
+      .lean();
+    if (!job) return res.status(404).json({ error: 'Import job not found' });
+    res.json(job);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── 2b. Cancel — stops the in-flight AI request and marks the job cancelled ──
+router.post('/import-status/:jobId/cancel', async (req, res) => {
+  try {
+    const wasRunning = cancelImportJob(req.params.jobId);
+    if (!wasRunning) {
+      // Not actively running (already finished, failed, or never started) —
+      // still fine; just report current status rather than erroring.
+      const job = await PdfImportJob.findById(req.params.jobId).select('status').lean();
+      if (!job) return res.status(404).json({ error: 'Import job not found' });
+      return res.json({ status: job.status, message: 'Job was not running — nothing to cancel.' });
+    }
+    res.json({ status: 'cancelling' }); // the worker updates the real status to 'cancelled' once it unwinds; poll /import-status for that
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// ── 3. Full structured result — for the teacher review screen ──
+router.get('/import/:jobId', async (req, res) => {
+  try {
+    // pdfBase64 excluded here on purpose (can be multi-MB) — fetched
+    // separately via /import/:jobId/pdf only when the teacher actually opens
+    // the side-by-side reference.
+    const job = await PdfImportJob.findById(req.params.jobId).select('-pdfBase64').lean();
+    if (!job) return res.status(404).json({ error: 'Import job not found' });
+    res.json(job);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── 3b. Original PDF/photos — for side-by-side reference (spec #25, #26) ──
+router.get('/import/:jobId/pdf', async (req, res) => {
+  try {
+    const job = await PdfImportJob.findById(req.params.jobId).select('sourceType pdfUrl pdfPublicId pdfBase64 sourceImages fileName').lean();
+    if (!job) return res.status(404).json({ error: 'Not found' });
+
+    if (job.sourceType === 'images') {
+      const urls = (job.sourceImages || []).map(img => img.url || (img.base64 ? `data:image/png;base64,${img.base64}` : '')).filter(Boolean);
+      if (!urls.length) return res.status(404).json({ error: 'Not found' });
+      // A single photo can just redirect straight to it; multiple photos
+      // (a whole paper shot page-by-page) get a minimal stacked gallery so
+      // "view original" still shows every page, not just the first.
+      if (urls.length === 1) return res.redirect(urls[0]);
+      const safeName = (job.fileName || 'Imported pages').replace(/[<>&"]/g, '');
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeName}</title>
+        <style>body{margin:0;background:#1a1a1a;padding:16px;font-family:sans-serif}
+        img{display:block;max-width:100%;margin:0 auto 16px;border-radius:6px;box-shadow:0 2px 12px rgba(0,0,0,.4)}
+        p{color:#aaa;text-align:center;font-size:12px;margin:0 0 4px}</style></head>
+        <body>${urls.map((u, i) => `<p>Page ${i + 1} of ${urls.length}</p><img src="${u}" alt="Page ${i + 1}">`).join('')}</body></html>`;
+      res.setHeader('Content-Type', 'text/html');
+      return res.send(html);
+    }
+
+    // Cloudinary-hosted: redirect so the bytes never pass through this server.
+    // Sign the URL when we have the public_id, so the teacher's browser isn't
+    // refused by the account's PDF/raw delivery restriction either.
+    if (job.pdfUrl) {
+      return res.redirect(job.pdfPublicId ? signedRawUrl(job.pdfPublicId) : job.pdfUrl);
+    }
+    if (!job.pdfBase64) return res.status(404).json({ error: 'Not found' });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${(job.fileName || 'document.pdf').replace(/"/g, '')}"`);
+    res.send(Buffer.from(job.pdfBase64, 'base64'));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── 4. Reprocess a single question's page range (spec #27) — not the whole document ──
+router.post('/import/:jobId/reprocess-question/:index', async (req, res) => {
+  try {
+    const job = await PdfImportJob.findById(req.params.jobId);
+    if (!job) return res.status(404).json({ error: 'Import job not found' });
+    const i = parseInt(req.params.index, 10);
+    const q = job.questions[i];
+    if (!q) return res.status(404).json({ error: 'Question not found in this job' });
+
+    const extraction = await getJobExtraction(job);
+    const pageStart = q.pageStart || 1, pageEnd = q.pageEnd || pageStart;
+    const pageNumbers = [];
+    for (let p = pageStart; p <= pageEnd; p++) pageNumbers.push(p);
+
+    const result = await aiProvider.analyzeRegion({
+      pageNumbers, pageCount: extraction.pageCount,
+      textByPage: extraction.textByPage, pageImages: extraction.pageImages, embeddedImages: extraction.embeddedImages,
+      scannedPages: extraction.scannedPages,
+      forceImages: true, // a single-question reprocess is small enough (1-2 pages) to afford always sending the image, and the whole point is getting a better look at it
+    });
+
+    // Prefer the question matching the same original number if present in
+    // the re-analysis; otherwise fall back to the first result for that region.
+    const rebuilt = result.questions.find(r => r.number === q.number) || result.questions[0];
+    if (!rebuilt) return res.status(422).json({ error: 'Reprocessing did not detect a question in this page range' });
+
+    job.questions[i] = {
+      number: rebuilt.number ?? q.number, pageStart: q.pageStart, pageEnd: q.pageEnd,
+      questionText: rebuilt.questionText || '',
+      questionImage: q.questionImage, // asset re-resolution kept out of scope for a single-question reprocess; teacher can still use manual image replace (spec #28)
+      options: (rebuilt.options || []).map(o => ({ label: o.label || '', text: o.text || '', imageData: '', isCorrect: false })),
+      questionType: rebuilt.questionType || q.questionType,
+      isMultiChoice: !!rebuilt.isMultiChoice,
+      marks: typeof rebuilt.marks === 'number' ? rebuilt.marks : q.marks,
+      negativeMarks: typeof rebuilt.negativeMarks === 'number' ? rebuilt.negativeMarks : q.negativeMarks,
+      answerDetected: false,
+      confidence: rebuilt.confidence || 'review',
+      flags: rebuilt.flags || [],
+    };
+    await job.save();
+    res.json({ question: job.questions[i] });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── 5. Manual image replace on a draft question (spec #28) ──
+router.put('/import/:jobId/questions/:index/image', async (req, res) => {
+  try {
+    const { embeddedImageIndex } = req.body; // teacher picks one of the extracted assets shown in the review UI
+    const job = await PdfImportJob.findById(req.params.jobId);
+    if (!job || !job.questions[req.params.index]) return res.status(404).json({ error: 'Not found' });
+
+    const extraction = await getJobExtraction(job);
+    const found = extraction.embeddedImages.find(i => i.index === embeddedImageIndex);
+    if (!found) return res.status(404).json({ error: 'Image index not found in this document' });
+
+    // Same treatment as the automatic path — the replacement goes to Cloudinary,
+    // not into the job document as base64.
+    job.questions[req.params.index].questionImage = await uploadImageBase64(found.base64, 'aiits/imports/questions');
+    await job.save();
+    res.json({ message: 'Image updated' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── 6. Create the draft Test — from here on it's a normal AIITS test (spec #21, #47, #48) ──
+router.post('/import/:jobId/create-draft', async (req, res) => {
+  try {
+    const job = await PdfImportJob.findById(req.params.jobId).select('-pdfBase64');
+    if (!job) return res.status(404).json({ error: 'Import job not found' });
+    if (job.status !== 'done' && job.status !== 'cancelled') return res.status(400).json({ error: `Import is still ${job.status} — wait for it to finish (or cancel it) before creating a draft` });
+    if (job.createdTestId) return res.status(200).json({ testId: job.createdTestId, message: 'Draft already created for this import' });
+
+    const meta = req.body || {}; // optional teacher-supplied metadata (spec #33) — title/subject/topic/duration/batches
+    // Safety net: anything still inline (legacy job, or Cloudinary was down
+    // mid-import) gets uploaded here so no base64 ever lands in DynamoDB.
+    const questions = await uploadTestImages(mapJobQuestionsToTestQuestions(job.questions));
+
+    const test = await Test.create({
+      title: meta.title || job.fileName || 'AI Imported Test',
+      subject: meta.subject || 'General',
+      topic: meta.topic || 'Imported',
+      description: meta.description || `Imported from ${job.fileName}`,
+      duration: meta.duration || 60,
+      questions,
+      isPublished: false, // spec #23, #48 — never auto-published
+      targetBatches: Array.isArray(meta.targetBatches) ? meta.targetBatches : [],
+    });
+
+    job.createdTestId = test.testId;
+    await job.save();
+    res.status(201).json({ testId: test.testId, questionCount: test.questionCount });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+module.exports = router;

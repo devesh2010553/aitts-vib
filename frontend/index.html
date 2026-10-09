@@ -161,6 +161,9 @@ textarea{resize:vertical}
 .feat-card{background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius);padding:24px;transition:var(--transition)}
 .feat-card:hover{border-color:var(--gold-border);box-shadow:var(--shadow-gold);transform:translateY(-3px)}
 .feat-icon{width:44px;height:44px;background:var(--gold-glow);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--gold);margin-bottom:12px}
+.feat-banner{display:flex;align-items:center;gap:18px;background:linear-gradient(135deg,var(--gold-glow),var(--bg-card));grid-column:1/-1}
+.feat-banner .feat-icon{margin-bottom:0;flex:none;width:52px;height:52px;font-size:22px}
+@media(min-width:1180px){.feat-banner{grid-column:span 3}}
 .feat-card h3{font-size:15px;font-weight:700;margin-bottom:6px}
 .feat-card p{font-size:13px;color:var(--text-sec);line-height:1.6}
 .about-inner{display:flex;align-items:center;gap:64px;flex-wrap:wrap}
@@ -220,6 +223,7 @@ textarea{resize:vertical}
 .dtab-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px}
 .dtab-header h3{font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
 .batch-filter-row{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.batch-filter{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .bfbtn{padding:5px 12px;border-radius:999px;border:1.5px solid var(--border);background:var(--bg-card);font-size:12px;font-weight:600;cursor:pointer;transition:var(--transition)}
 .bfbtn.active{border-color:var(--gold);background:var(--gold-glow);color:var(--gold)}
 .skel{background:linear-gradient(90deg,var(--bg-elevated) 25%,var(--border) 50%,var(--bg-elevated) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:var(--radius);height:200px}
@@ -330,7 +334,20 @@ textarea{resize:vertical}
 .mob-btn.active,.mob-btn:hover{color:var(--gold)}
 .ask-ai-btn{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:999px;border:1.5px solid var(--gold-border);background:var(--gold-pale);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);transition:var(--transition)}
 .ask-ai-btn:hover{background:var(--gold);color:#fff}
-.mob-nav.has-tools .mob-btn{padding:5px 3px;flex:1;min-width:0}
+.mob-nav .mob-btn{flex:1;min-width:0}
+.mob-only{display:none!important}
+.menu-btn{position:relative;width:38px;height:38px;border-radius:var(--radius-sm);border:1.5px solid var(--gold-border);background:var(--gold-pale);color:var(--gold);font-size:16px;cursor:pointer;align-items:center;justify-content:center}
+.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1290;opacity:0;pointer-events:none;transition:opacity .2s}
+.drawer-bg.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(280px,82vw);background:var(--bg-card);border-left:1.5px solid var(--border);z-index:1300;transform:translateX(100%);transition:transform .25s ease;display:flex;flex-direction:column;gap:4px;padding:14px;box-shadow:-8px 0 24px rgba(0,0,0,.25);visibility:hidden}
+.drawer.open{transform:none;visibility:visible}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 12px;margin-bottom:6px;border-bottom:1.5px solid var(--border);font-weight:700;font-size:15px}
+.drawer-head button{background:none;border:none;color:var(--text-muted);font-size:24px;line-height:1;cursor:pointer}
+.drawer-item{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:none;border:none;border-radius:var(--radius-sm);padding:13px 12px;color:var(--text);font-family:var(--font);font-size:15px;font-weight:600;cursor:pointer}
+.drawer-item i{width:20px;text-align:center;color:var(--gold)}
+.drawer-item.active,.drawer-item:hover{background:var(--gold-glow);color:var(--gold)}
+.drawer-item.logout{margin-top:auto;border:1.5px solid var(--border)}
+.drawer-item .chat-unread-dot{position:static;margin-left:auto}
 /* MODALS */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
 .modal-box{background:var(--bg-card);border:1.5px solid var(--gold-border);border-radius:var(--radius);padding:28px;max-width:400px;width:100%;text-align:center;box-shadow:var(--shadow-md)}
@@ -350,6 +367,7 @@ textarea{resize:vertical}
 /* RESPONSIVE */
 @media(max-width:768px){
   .desktop-only{display:none!important}
+  .mob-only{display:inline-flex!important}
   .mob-nav{display:flex}
   .auth-panel-left{display:none}
   .auth-panel-right{padding:24px 16px;width:100%;max-width:100%}
@@ -366,7 +384,7 @@ textarea{resize:vertical}
   .hero-stats{gap:20px}
   .feedback-fab{bottom:90px;right:12px}
 }
-@media(min-width:769px){.mob-nav{display:none!important}}
+@media(min-width:769px){.mob-nav,.drawer,.drawer-bg{display:none!important}}
 </style>
 </head>
 <body>
@@ -440,7 +458,7 @@ textarea{resize:vertical}
         <div class="feat-card"><div class="feat-icon"><i class="fas fa-chart-bar"></i></div><h3>Detailed Analytics</h3><p>Full question-by-question analysis after every test.</p></div>
         <div class="feat-card"><div class="feat-icon"><i class="fas fa-shield-alt"></i></div><h3>Anti-Cheat System</h3><p>Fullscreen enforcement with auto-submit on 3 violations.</p></div>
         <div class="feat-card"><div class="feat-icon"><i class="fas fa-redo"></i></div><h3>Auto-Resume</h3><p>Accidentally closed? Answers are saved. Resume from where you left.</p></div>
-        <div class="feat-card"><div class="feat-icon"><i class="fas fa-bell"></i></div><h3>Push Notifications</h3><p>Get notified when new tests go live, even when app is closed.</p></div>
+        <div class="feat-card feat-banner"><div class="feat-icon"><i class="fas fa-atom"></i></div><div><h3>Visualize organic molecules in 3D</h3><p>Rotate and zoom benzene, ethanol, aspirin, caffeine or even proteins right in your browser &mdash; a built-in 3D molecule viewer waits in Tools after you log in.</p></div></div>
       </div>
     </div>
   </section>
@@ -578,17 +596,23 @@ textarea{resize:vertical}
     <div class="nav-right">
       <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode"><i class="fas fa-moon" id="theme-icon-dash"></i></button>
       <div class="user-pill"><i class="fas fa-user-circle"></i> <span id="nav-user-name">Student</span><span id="nav-batch-pill" class="batch-pill"></span></div>
-      <button class="btn btn-outline btn-sm" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
+      <button class="btn btn-outline btn-sm desktop-only" onclick="logout()" title="Log out"><i class="fas fa-sign-out-alt"></i></button>
+      <button class="menu-btn mob-only" onclick="openDrawer()" aria-label="Open menu"><i class="fas fa-bars"></i><span class="chat-unread-dot" style="display:none"></span></button>
     </div>
   </nav>
+  <div id="mob-drawer-bg" class="drawer-bg" onclick="closeDrawer()"></div>
+  <aside id="mob-drawer" class="drawer" aria-hidden="true">
+    <div class="drawer-head"><span>Menu</span><button onclick="closeDrawer()" aria-label="Close menu">&times;</button></div>
+    <button class="drawer-item" onclick="switchTab('chat');closeDrawer()"><i class="fas fa-comments"></i> Chat<span class="chat-unread-dot" style="display:none"></span></button>
+    <button class="drawer-item" onclick="switchTab('gallery');closeDrawer()"><i class="fas fa-images"></i> Gallery</button>
+    <button class="drawer-item" onclick="switchTab('settings');closeDrawer()"><i class="fas fa-cog"></i> Account</button>
+    <button class="drawer-item logout" onclick="closeDrawer();logout()"><i class="fas fa-sign-out-alt"></i> Log out</button>
+  </aside>
   <div class="mob-nav">
     <button class="mob-btn active" onclick="switchTab('tests')"><i class="fas fa-list-alt"></i><span>Tests</span></button>
     <button class="mob-btn" onclick="switchTab('my-results')"><i class="fas fa-chart-bar"></i><span>Results</span></button>
     <button class="mob-btn" onclick="switchTab('leaderboard')"><i class="fas fa-trophy"></i><span>Board</span></button>
-    <button class="mob-btn" onclick="switchTab('gallery')"><i class="fas fa-images"></i><span>Gallery</span></button>
-    <button class="mob-btn" onclick="switchTab('chat')"><i class="fas fa-comments"></i><span>Chat</span><span class="chat-unread-dot" style="display:none"></span></button>
     <button class="mob-btn tools-nav hidden" onclick="switchTab('tools')"><i class="fas fa-toolbox"></i><span>Tools</span></button>
-    <button class="mob-btn" onclick="switchTab('settings')"><i class="fas fa-cog"></i><span>Account</span></button>
   </div>
   <div class="dash-container">
     <div class="welcome-bar">
@@ -1285,7 +1309,7 @@ function loadAiTools(){
   if(window.AIITSTools)return Promise.resolve(window.AIITSTools);
   if(_aiToolsP)return _aiToolsP;
   _aiToolsP=new Promise(function(ok,bad){
-    var s=document.createElement('script');s.src='/ai-tools.js?v=1';
+    var s=document.createElement('script');s.src='/ai-tools.js?v=3';
     s.onload=function(){ok(window.AIITSTools);};
     s.onerror=function(){_aiToolsP=null;bad(new Error('Could not load tools. Check your connection.'));};
     document.head.appendChild(s);
@@ -1305,11 +1329,15 @@ function qtTick(newIdx){
 }
 function qtUserKey(){return (S.user&&(S.user.uid||S.user._id||S.user.email))||'anon';}
 
+function openDrawer(){var d=document.getElementById('mob-drawer'),b=document.getElementById('mob-drawer-bg');if(!d)return;d.classList.add('open');b.classList.add('open');d.setAttribute('aria-hidden','false');}
+function closeDrawer(){var d=document.getElementById('mob-drawer'),b=document.getElementById('mob-drawer-bg');if(!d)return;d.classList.remove('open');b.classList.remove('open');d.setAttribute('aria-hidden','true');}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeDrawer();});
+
 function switchTab(tab){
   document.querySelectorAll('#page-dashboard .dtab').forEach(function(t){t.classList.remove('active');});
   var el=document.getElementById('dash-tab-'+tab);if(el)el.classList.add('active');
   document.querySelectorAll('#page-dashboard .nav-link').forEach(function(l){l.classList.toggle('active',(l.getAttribute('onclick')||'').indexOf("'"+tab+"'")!==-1);});
-  document.querySelectorAll('#page-dashboard .mob-btn').forEach(function(l){l.classList.toggle('active',(l.getAttribute('onclick')||'').indexOf("'"+tab+"'")!==-1);});
+  document.querySelectorAll('#page-dashboard .mob-btn, #page-dashboard .drawer-item:not(.logout)').forEach(function(l){l.classList.toggle('active',(l.getAttribute('onclick')||'').indexOf("'"+tab+"'")!==-1);});
   if(tab==='tests')loadTests();
   else if(tab==='my-results')loadMyResults();
   else if(tab==='leaderboard'){loadNewLeaderboard('');}

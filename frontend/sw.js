@@ -7,7 +7,7 @@
 // token '<'" JSON-parse error client-side (Express's default HTML error
 // page being fed to res.json()). Bump this on every deploy touching
 // frontend/*.js or *.html, not just when something "feels" cache-related.
-var CACHE = 'aiits-v8';
+var CACHE = 'aiits-v10';
 var STATIC = ['/', '/manifest.json'];
 self.addEventListener('install', function(e) {
   e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(STATIC); }).then(function(){ return self.skipWaiting(); }).catch(function(){ return self.skipWaiting(); }));

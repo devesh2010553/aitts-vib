@@ -3,9 +3,9 @@
  * admin has switched the Tools tab off).
  *
  *  1. Ask AI report   — shows the server-generated analysis of a result.
- *  2. Gemini chat     — talks to Google DIRECTLY from the student's browser
- *                       with the student's own free API key (kept only in
- *                       localStorage). Our server is not involved at all.
+ *  2. Gemini chat     — see ai-chat.js. Talks to Google DIRECTLY from the
+ *                       student's browser with the student's own free key;
+ *                       memory, history and files stay in the browser.
  *  3. 3D molecules    — 3Dmol.js (lazy-loaded from a CDN) + structure files
  *                       fetched straight from PubChem / RCSB by the browser.
  *
@@ -14,8 +14,6 @@
 (function () {
   'use strict';
 
-  var LS_KEY = 'aiits_gemini_key', LS_MODEL = 'aiits_gemini_model', LS_HIST = 'aiits_gemini_hist';
-  var DEFAULT_MODEL = 'gemini-3.6-flash';
   var DMOL_URL = 'https://cdn.jsdelivr.net/npm/3dmol@2.5.5/build/3Dmol-min.js';
   var DMOL_SRI = 'sha384-OsczYbldvrHgslr9fFp/i4GiLSeuw9l+QIlv99ITw8soOwXcoGeflFMLg+CU/X1d';
 
@@ -33,18 +31,13 @@
     '.tl-seg button{flex:1;min-width:130px;padding:10px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--bg-card);color:var(--text-sec);font-weight:700;font-size:13px;cursor:pointer;font-family:var(--font)}' +
     '.tl-seg button.active{border-color:var(--gold);color:var(--gold);background:var(--gold-glow)}' +
     '.tl-card{background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}' +
+    '#tools-root input[type=checkbox]{width:18px;height:18px;padding:0;margin:0;flex:none;min-width:0;accent-color:var(--gold)}' +
     '.tl-note{font-size:12px;color:var(--text-muted);line-height:1.6}' +
     '.tl-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}' +
     '.tl-row input,.tl-row select{flex:1;min-width:120px}' +
     '.tl-chips{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}' +
     '.tl-chip{padding:5px 11px;border-radius:999px;border:1.5px solid var(--gold-border);background:var(--gold-pale);color:var(--gold);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)}' +
     '#tl-viewer{position:relative;width:100%;height:340px;border:1.5px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg-elevated)}' +
-    '#gm-box{height:360px;overflow-y:auto;border:1.5px solid var(--border);border-radius:var(--radius);padding:12px;background:var(--bg-elevated);display:flex;flex-direction:column;gap:8px;margin-bottom:10px}' +
-    '.gm-msg{max-width:88%;padding:9px 12px;border-radius:12px;font-size:13.5px;line-height:1.6;word-wrap:break-word}' +
-    '.gm-u{align-self:flex-end;background:var(--gold);color:#fff;border-bottom-right-radius:3px}' +
-    '.gm-a{align-self:flex-start;background:var(--bg-card);border:1px solid var(--border);border-bottom-left-radius:3px}' +
-    '.gm-a pre{background:var(--bg-elevated);padding:8px;border-radius:6px;overflow-x:auto;font-size:12px}' +
-    '.gm-a code{background:var(--bg-elevated);padding:1px 4px;border-radius:4px;font-size:12px}' +
     '.air-sec{margin-bottom:14px}.air-h{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--gold);margin-bottom:6px;display:flex;align-items:center;gap:6px}' +
     '.air-p{font-size:13.5px;line-height:1.65;color:var(--text)}' +
     '.air-weak{border:1px solid var(--border);border-left:3px solid var(--red,#c53030);border-radius:8px;padding:9px 12px;margin-bottom:8px;background:var(--bg-elevated)}' +
@@ -117,99 +110,25 @@
   }
 
   // =====================================================================
-  // 2. GEMINI CHAT (browser -> Google, student's own key)
+  // 2. GEMINI CHAT (code lives in ai-chat.js, fetched only when this pane opens)
   // =====================================================================
-  function fmt(t) {
-    var s = esc(t);
-    s = s.replace(/```([\s\S]*?)```/g, function (_, c) { return '<pre>' + c.replace(/^\w*\n/, '') + '</pre>'; });
-    s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
-    s = s.replace(/^\s*[\*\-] /gm, '\u2022 ');
-    return s.replace(/\n/g, '<br>').replace(/<pre>([\s\S]*?)<\/pre>/g, function (_, c) { return '<pre>' + c.replace(/<br>/g, '\n') + '</pre>'; });
+  var chatP = null;
+  function loadChat() {
+    if (window.AIITSChat) return Promise.resolve();
+    if (chatP) return chatP;
+    chatP = new Promise(function (ok, bad) {
+      var s = document.createElement('script');
+      s.src = '/ai-chat.js?v=2';
+      s.onload = function () { window.AIITSChat ? ok() : bad(new Error('Chat failed to start')); };
+      s.onerror = function () { chatP = null; bad(new Error('Could not load the chat. Check your internet and try again.')); };
+      document.head.appendChild(s);
+    });
+    return chatP;
   }
-  function getHist() { try { var h = JSON.parse(lsGet(LS_HIST + '_' + userKey()) || '[]'); return Array.isArray(h) ? h : []; } catch (e) { return []; } }
-  function saveHist(h) {
-    h = h.slice(-30);
-    while (JSON.stringify(h).length > 40000 && h.length > 2) h.shift();
-    lsSet(LS_HIST + '_' + userKey(), JSON.stringify(h));
-  }
-
-  var busy = false;
   function mountGemini(root) {
-    var key = lsGet(LS_KEY);
-    if (!key) {
-      root.innerHTML = '<div class="tl-card"><h4 style="margin-bottom:8px"><i class="fas fa-key" style="color:var(--gold)"></i> Connect your free Gemini key</h4>' +
-        '<p class="tl-note" style="margin-bottom:10px">This chat runs directly between <b>your browser and Google</b> &mdash; nothing goes through our server. Create a free key at ' +
-        '<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="color:var(--gold)">aistudio.google.com/apikey</a>, paste it below. It is saved only in this browser (localStorage). Use a key just for this &mdash; do not share it.</p>' +
-        '<div class="tl-row"><input type="password" id="gm-key" placeholder="Paste your Gemini API key" autocomplete="off"><button class="btn btn-gold" id="gm-save">Save</button></div></div>';
-      $('gm-save').onclick = function () {
-        var v = ($('gm-key').value || '').trim();
-        if (v.length < 20 || /\s/.test(v)) { tst('That does not look like a valid key.', 'error'); return; }
-        lsSet(LS_KEY, v); mountGemini(root);
-      };
-      return;
-    }
-    var model = lsGet(LS_MODEL) || DEFAULT_MODEL;
-    root.innerHTML = '<div id="gm-box"></div>' +
-      '<div class="tl-row"><input type="text" id="gm-in" placeholder="Ask a doubt, concept, or paste a question..." maxlength="2000"><button class="btn btn-gold" id="gm-send"><i class="fas fa-paper-plane"></i></button></div>' +
-      '<details style="margin-top:12px"><summary class="tl-note" style="cursor:pointer">Settings</summary>' +
-      '<div class="tl-row" style="margin-top:8px"><input type="text" id="gm-model" value="' + esc(model) + '" placeholder="Model id"><button class="btn btn-outline btn-sm" id="gm-msave">Save model</button></div>' +
-      '<div class="tl-row" style="margin-top:8px"><button class="btn btn-outline btn-sm" id="gm-clear"><i class="fas fa-eraser"></i> Clear chat</button><button class="btn btn-outline btn-sm" id="gm-rmkey"><i class="fas fa-trash"></i> Remove my key</button></div></details>';
-    var box = $('gm-box');
-    function draw() {
-      var h = getHist();
-      box.innerHTML = h.length ? h.map(function (m) { return '<div class="gm-msg ' + (m.r === 'u' ? 'gm-u' : 'gm-a') + '">' + (m.r === 'u' ? esc(m.t) : fmt(m.t)) + '</div>'; }).join('')
-        : '<p class="tl-note" style="margin:auto;text-align:center">Ask anything about Physics, Chemistry, Maths or Biology.<br>Your chat is stored only on this device.</p>';
-      box.scrollTop = box.scrollHeight;
-    }
-    draw();
-    $('gm-in').onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
-    $('gm-send').onclick = send;
-    $('gm-msave').onclick = function () { var v = ($('gm-model').value || '').trim(); if (v) { lsSet(LS_MODEL, v); tst('Model saved', 'success'); } };
-    $('gm-clear').onclick = function () { lsDel(LS_HIST + '_' + userKey()); draw(); };
-    $('gm-rmkey').onclick = function () { if (confirm('Remove your Gemini key from this browser?')) { lsDel(LS_KEY); mountGemini(root); } };
-
-    function send() {
-      if (busy) return;
-      var inp = $('gm-in'), text = (inp.value || '').trim();
-      if (!text) return;
-      var h = getHist(); h.push({ r: 'u', t: text }); saveHist(h); inp.value = ''; draw();
-      busy = true; $('gm-send').disabled = true;
-      var typing = document.createElement('div'); typing.className = 'gm-msg gm-a'; typing.innerHTML = '<span class="air-dots"><span></span><span></span><span></span></span>';
-      box.appendChild(typing); box.scrollTop = box.scrollHeight;
-
-      var contents = h.slice(-12).map(function (m) { return { role: m.r === 'u' ? 'user' : 'model', parts: [{ text: m.t }] }; });
-      var ctrl = new AbortController(), timer = setTimeout(function () { ctrl.abort(); }, 45000);
-      fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(lsGet(LS_MODEL) || DEFAULT_MODEL) + ':generateContent', {
-        method: 'POST', signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': lsGet(LS_KEY) || '' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: 'You are a friendly, accurate tutor for Indian JEE/NEET students. Explain step by step, keep answers concise, and say so when you are unsure.' }] },
-          contents: contents, generationConfig: { maxOutputTokens: 2048, temperature: 0.5 }
-        })
-      }).then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (d) {
-          if (!res.ok) {
-            var msg = (d.error && d.error.message) || ('HTTP ' + res.status);
-            if (res.status === 400 && /API key/i.test(msg)) msg = 'Your API key was rejected. Check it in Settings > Remove my key.';
-            else if (res.status === 429) msg = 'Free quota reached. Wait a bit and try again.';
-            else if (res.status === 404) msg = 'Model "' + (lsGet(LS_MODEL) || DEFAULT_MODEL) + '" not found. Change it in Settings.';
-            throw new Error(msg);
-          }
-          var c = d.candidates && d.candidates[0];
-          var out = c && c.content && c.content.parts && c.content.parts.map(function (p) { return p.text || ''; }).join('');
-          if (!out) throw new Error('No answer returned' + (c && c.finishReason ? ' (' + c.finishReason + ')' : '') + '.');
-          return out;
-        });
-      }).then(function (out) {
-        var hh = getHist(); hh.push({ r: 'a', t: out }); saveHist(hh);
-      }).catch(function (e) {
-        var hh = getHist(); hh.push({ r: 'a', t: '\u26A0 ' + (e.name === 'AbortError' ? 'Request timed out. Try again.' : e.message) }); saveHist(hh);
-      }).then(function () {
-        clearTimeout(timer); busy = false;
-        if ($('gm-send')) { $('gm-send').disabled = false; draw(); }
-      });
-    }
+    root.innerHTML = '<p class="tl-note" style="padding:12px">Loading chat&hellip;</p>';
+    loadChat().then(function () { window.AIITSChat.mount(root); })
+      .catch(function (e) { root.innerHTML = '<p style="color:var(--red);padding:12px;font-size:13px">' + esc(e.message) + '</p>'; });
   }
 
   // =====================================================================

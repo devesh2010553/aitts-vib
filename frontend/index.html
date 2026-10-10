@@ -1309,7 +1309,7 @@ function loadAiTools(){
   if(window.AIITSTools)return Promise.resolve(window.AIITSTools);
   if(_aiToolsP)return _aiToolsP;
   _aiToolsP=new Promise(function(ok,bad){
-    var s=document.createElement('script');s.src='/ai-tools.js?v=3';
+    var s=document.createElement('script');s.src='/ai-tools.js?v=4';
     s.onload=function(){ok(window.AIITSTools);};
     s.onerror=function(){_aiToolsP=null;bad(new Error('Could not load tools. Check your connection.'));};
     document.head.appendChild(s);

@@ -6,6 +6,7 @@
  *  2. Gemini chat     — see ai-chat.js. Talks to Google DIRECTLY from the
  *                       student's browser with the student's own free key;
  *                       memory, history and files stay in the browser.
+ *  4. Simulations     — PhET iframe (loads from phet.colorado.edu, nothing from us).
  *  3. 3D molecules    — 3Dmol.js (lazy-loaded from a CDN) + structure files
  *                       fetched straight from PubChem / RCSB by the browser.
  *
@@ -28,7 +29,7 @@
   // ---------- styles (injected once, only when this file is used) ----------
   var css = '' +
     '.tl-seg{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}' +
-    '.tl-seg button{flex:1;min-width:130px;padding:10px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--bg-card);color:var(--text-sec);font-weight:700;font-size:13px;cursor:pointer;font-family:var(--font)}' +
+    '.tl-seg button{flex:1;min-width:100px;padding:10px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--border);background:var(--bg-card);color:var(--text-sec);font-weight:700;font-size:13px;cursor:pointer;font-family:var(--font)}' +
     '.tl-seg button.active{border-color:var(--gold);color:var(--gold);background:var(--gold-glow)}' +
     '.tl-card{background:var(--bg-card);border:1.5px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}' +
     '#tools-root input[type=checkbox]{width:18px;height:18px;padding:0;margin:0;flex:none;min-width:0;accent-color:var(--gold)}' +
@@ -44,6 +45,16 @@
     '.air-weak b{font-size:13.5px}.air-weak div{font-size:12.5px;color:var(--text-sec);margin-top:2px}' +
     '.air-li{font-size:13.5px;line-height:1.6;padding:3px 0 3px 18px;position:relative}.air-li:before{content:"\\2022";position:absolute;left:4px;color:var(--gold);font-weight:900}' +
     '.air-dots span{display:inline-block;width:7px;height:7px;margin:0 3px;border-radius:50%;background:var(--gold);animation:airb 1s infinite ease-in-out}.air-dots span:nth-child(2){animation-delay:.15s}.air-dots span:nth-child(3){animation-delay:.3s}' +
+    '.sim-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.sim-bar select{flex:1;min-width:180px}' +
+    '.sim-wrap{position:relative;width:100%;aspect-ratio:16/9;background:var(--bg-elevated);border:1.5px solid var(--border);border-radius:var(--radius);overflow:hidden}' +
+    '@supports not (aspect-ratio:16/9){.sim-wrap{height:0;padding-top:56.25%}}' +
+    '.sim-wrap:fullscreen{aspect-ratio:auto;border-radius:0;border:0}.sim-wrap:-webkit-full-screen{aspect-ratio:auto;border-radius:0;border:0}' +
+    '.sim-frame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;visibility:hidden}.sim-wrap.is-ready .sim-frame{visibility:visible}' +
+    '.sim-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;text-align:center;background:var(--bg-elevated);color:var(--text-sec);font-size:14px;line-height:1.5}' +
+    '.sim-wrap.is-ready .sim-overlay{display:none}.sim-overlay i.sim-ico{font-size:34px;color:var(--gold)}' +
+    '.sim-spin{width:46px;height:46px;border:4px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:simspin .8s linear infinite}' +
+    '@keyframes simspin{to{transform:rotate(360deg)}}@media (prefers-reduced-motion:reduce){.sim-spin{animation-duration:2.4s}}' +
+    '.sim-attr{margin-top:12px;font-size:11.5px;color:var(--text-muted);text-align:center;line-height:1.6}.sim-attr a{color:var(--gold)}' +
     '@keyframes airb{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}';
   var styled = false;
   function ensureStyle() { if (styled) return; styled = true; var s = document.createElement('style'); s.textContent = css; document.head.appendChild(s); }
@@ -212,25 +223,109 @@
   }
 
   // =====================================================================
+  // 4. PHYSICS / SCIENCE SIMULATIONS (PhET, embedded straight from phet.colorado.edu)
+  //    The iframe loads from PhET's servers into the student's browser, so our
+  //    server carries zero load. Nothing is fetched until the student picks a sim.
+  // =====================================================================
+  var SIMS = [
+    { g: 'Mechanics', l: [['projectile-motion', 'Projectile Motion'], ['forces-and-motion-basics', 'Forces and Motion: Basics'], ['energy-skate-park-basics', 'Energy Skate Park: Basics'],
+      ['pendulum-lab', 'Pendulum Lab'], ['masses-and-springs', 'Masses & Springs'], ['collision-lab', 'Collision Lab'], ['moving-man', 'Moving Man'], ['friction', 'Friction'], ['gravity-force-lab', 'Gravity Force Lab']] },
+    { g: 'Electricity & Magnetism', l: [['circuit-construction-kit-dc', 'Circuit Construction Kit: DC'], ['ohms-law', "Ohm's Law"], ['resistance-in-a-wire', 'Resistance in a Wire'], ['faradays-law', "Faraday's Law"]] },
+    { g: 'Waves, Light & Heat', l: [['wave-on-a-string', 'Wave on a String'], ['waves-intro', 'Waves Intro'], ['bending-light', 'Bending Light'], ['geometric-optics', 'Geometric Optics'], ['blackbody-spectrum', 'Blackbody Spectrum']] },
+    { g: 'Fluids & Gases', l: [['density', 'Density'], ['fluid-pressure-and-flow', 'Fluid Pressure and Flow'], ['gas-properties', 'Gas Properties'], ['states-of-matter', 'States of Matter']] },
+    { g: 'Chemistry', l: [['build-an-atom', 'Build an Atom'], ['molecule-polarity', 'Molecule Polarity'], ['ph-scale', 'pH Scale'], ['balancing-chemical-equations', 'Balancing Chemical Equations']] }
+  ];
+  var SIM_LAST = 'aiits_sim_last';
+  function simName(id) { var n = id; SIMS.forEach(function (g) { g.l.forEach(function (x) { if (x[0] === id) n = x[1]; }); }); return n; }
+  function simUrl(id) { return 'https://phet.colorado.edu/sims/html/' + id + '/latest/' + id + '_en.html'; }
+  var simCleanup = null;
+  var SLOW_MS = 20000;
+
+  function mountSim(root) {
+    var last = lsGet(SIM_LAST) || 'projectile-motion';
+    var sel = SIMS.map(function (g) {
+      return '<optgroup label="' + esc(g.g) + '">' + g.l.map(function (x) { return '<option value="' + x[0] + '"' + (x[0] === last ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</optgroup>';
+    }).join('');
+    root.innerHTML =
+      '<div class="sim-bar"><select id="sim-sel" aria-label="Choose a simulation">' + sel + '</select>' +
+      '<button class="btn btn-outline btn-sm" id="sim-fs" title="Fullscreen"><i class="fas fa-expand"></i></button>' +
+      '<a class="btn btn-outline btn-sm" id="sim-new" target="_blank" rel="noopener noreferrer" title="Open in a new tab"><i class="fas fa-up-right-from-square"></i></a></div>' +
+      '<div class="sim-wrap" id="sim-wrap">' +
+        '<iframe class="sim-frame" id="sim-frame" title="PhET simulation" allow="fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" hidden></iframe>' +
+        '<div class="sim-overlay" id="sim-ov" role="status" aria-live="polite"></div>' +
+      '</div>' +
+      '<p class="tl-note" style="margin-top:8px;text-align:center">Tip: on a phone, tap <i class="fas fa-expand"></i> or rotate to landscape for a bigger view.</p>' +
+      '<p class="sim-attr">PhET Interactive Simulations, University of Colorado Boulder, <a href="https://colorado.edu" target="_blank" rel="noopener noreferrer">https://colorado.edu</a></p>';
+
+    var wrap = $('sim-wrap'), frame = $('sim-frame'), ov = $('sim-ov'), select = $('sim-sel');
+    var current = null, token = 0, slowT = null;
+    function online() { return navigator.onLine !== false; }
+
+    function setState(st) {
+      wrap.classList.toggle('is-ready', st === 'ready');
+      frame.hidden = (st === 'offline' || st === 'empty');
+      if (st === 'loading') ov.innerHTML = '<div class="sim-spin"></div><div>Loading simulation&hellip;</div>';
+      else if (st === 'slow') ov.innerHTML = '<div class="sim-spin"></div><div>Still loading &mdash; this is taking longer than usual.</div><button class="btn btn-outline btn-sm" id="sim-retry"><i class="fas fa-rotate"></i> Try again</button>';
+      else if (st === 'offline') ov.innerHTML = '<i class="fas fa-wifi sim-ico" style="opacity:.55"></i><div style="max-width:320px">This simulation requires an internet connection. Please check your network.</div>';
+      else if (st === 'empty') ov.innerHTML = '<i class="fas fa-flask sim-ico"></i><div>Pick a simulation to start.<br><span class="tl-note">It loads straight from PhET &mdash; free, and only when you ask for it.</span></div><button class="btn btn-gold" id="sim-go"><i class="fas fa-play"></i> Launch ' + esc(simName(select.value)) + '</button>';
+      var r = $('sim-retry'); if (r) r.onclick = function () { load(current); };
+      var g = $('sim-go'); if (g) g.onclick = function () { load(select.value); };
+    }
+    function stop() { token++; clearTimeout(slowT); try { frame.onload = null; frame.src = 'about:blank'; } catch (e) {} }
+
+    function load(id) {
+      if (!id) return;
+      current = id; lsSet(SIM_LAST, id);
+      $('sim-new').href = simUrl(id);
+      stop();
+      if (!online()) { setState('offline'); return; }
+      var my = token;
+      setState('loading');
+      frame.title = 'PhET simulation: ' + simName(id);
+      frame.onload = function () { if (my !== token) return; clearTimeout(slowT); setState('ready'); };
+      frame.hidden = false;
+      frame.src = simUrl(id);
+      slowT = setTimeout(function () { if (my === token && !wrap.classList.contains('is-ready')) setState('slow'); }, SLOW_MS);
+    }
+
+    select.onchange = function () { load(select.value); };
+    $('sim-fs').onclick = function () {
+      var el = wrap, f = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (f) { try { f.call(el); } catch (e) {} }
+      else if (current) window.open(simUrl(current), '_blank', 'noopener');
+    };
+    function goOffline() { stop(); setState('offline'); }
+    function goOnline() { if (current) load(current); }
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+    simCleanup = function () { stop(); window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
+
+    if (!online()) setState('offline'); else setState('empty');
+  }
+
+  // =====================================================================
   // Tools home
   // =====================================================================
   var which = 'gemini';
   function mount(root) {
     ensureStyle();
-    root.innerHTML = '<div class="tl-seg"><button id="tl-t-gemini" class="active"><i class="fas fa-robot"></i> Gemini AI</button><button id="tl-t-mol"><i class="fas fa-atom"></i> 3D Molecules</button></div><div id="tl-pane"></div>';
+    root.innerHTML = '<div class="tl-seg"><button id="tl-t-gemini" class="active"><i class="fas fa-robot"></i> Gemini AI</button><button id="tl-t-mol"><i class="fas fa-atom"></i> 3D Molecules</button><button id="tl-t-sim"><i class="fas fa-flask"></i> Simulations</button></div><div id="tl-pane"></div>';
     function pick(w) {
       which = w;
       $('tl-t-gemini').classList.toggle('active', w === 'gemini');
       $('tl-t-mol').classList.toggle('active', w === 'mol');
+      $('tl-t-sim').classList.toggle('active', w === 'sim');
+      if (simCleanup) { simCleanup(); simCleanup = null; }
       if (viewer) { try { viewer.spin(false); } catch (e) {} viewer = null; }
       var p = $('tl-pane');
-      if (w === 'gemini') mountGemini(p); else mountMol(p);
+      if (w === 'gemini') mountGemini(p); else if (w === 'mol') mountMol(p); else mountSim(p);
     }
     $('tl-t-gemini').onclick = function () { pick('gemini'); };
     $('tl-t-mol').onclick = function () { pick('mol'); };
+    $('tl-t-sim').onclick = function () { pick('sim'); };
     pick(which);
   }
-  function pause() { if (viewer) { try { viewer.spin(false); } catch (e) {} } }
+  function pause() { if (viewer) { try { viewer.spin(false); } catch (e) {} } if (simCleanup) { simCleanup(); simCleanup = null; } }
   window.addEventListener('resize', function () { if (viewer && $('tl-viewer')) { try { viewer.resize(); } catch (e) {} } });
 
   window.AIITSTools = { mount: mount, pause: pause, askAI: askAI };

@@ -51,4 +51,15 @@ router.post('/upload', requireUploadKey, upload.single('image'), async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Removes the stored image URL so the about page stops showing it (the
+// normal view hides the photo / exhibit section when the URL is empty).
+router.delete('/image', requireUploadKey, async (req, res) => {
+  try {
+    const type = SETTING_KEYS[req.query.type || req.body.type] ? (req.query.type || req.body.type) : null;
+    if (!type) return res.status(400).json({ error: "type must be 'profile' or 'searchconsole'" });
+    await SiteSetting.findByIdAndDelete(SETTING_KEYS[type]);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

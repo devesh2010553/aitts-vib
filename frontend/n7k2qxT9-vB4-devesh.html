@@ -149,6 +149,8 @@
   }
   #upload-view button:hover{background:var(--accent)}
   #upload-view .cur-thumb{display:none;max-height:90px;border-radius:4px;border:1px solid var(--rule);margin-bottom:10px}
+  #upload-view .btn-del{background:#b3261e;margin-left:8px}
+  #upload-view .btn-del:hover{background:#8c1d18}
   #upload-status{font-size:13px;color:var(--ink-soft);margin-top:18px}
 </style>
 </head>
@@ -158,11 +160,11 @@
 
   <header>
     <p class="name">Devesh Sharma</p>
-    <p class="role">Full-stack developer — Agra, Uttar Pradesh, India 282007</p>
+    <p class="role">Class 12th student — Agra, Uttar Pradesh, India 282007</p>
     <hr class="rule">
     <div class="intro-row">
       <img id="profile-photo" class="profile-photo" alt="Devesh Sharma">
-      <p class="lede">Hi — I'm Devesh. I designed, built, and now run the platform this page is quietly tucked inside of, along with a couple of other production systems I'll walk through below. If you're reading this, someone sent you a link directly <em>— this page isn't linked from anywhere on the site itself.</em></p>
+      <p class="lede">Hi — I'm Devesh. I designed, built, and run the platform this page is tucked inside. <em>This page isn't linked from anywhere on the site.</em></p>
     </div>
   </header>
 
@@ -179,20 +181,20 @@
   <section>
     <h2>What I built</h2>
     <div class="build">
-      <h3>The exam platform (AITTS, for Vibrant Academy)</h3>
-      <p>A topic-wise test series for JEE aspirants: registration, timed exams, an all-India leaderboard, and an admin console — built to survive several hundred students hitting submit within the same few minutes, which is a very different engineering problem than most CRUD apps. It's sized for 500 concurrent test-takers today, moving toward 750–1000+, running on a two-core cloud instance behind Nginx.</p>
+      <h3>Exam platform (AITTS, for Vibrant Academy)</h3>
+      <p>Timed JEE test series with an all-India leaderboard and an admin console, built for 500+ students submitting within the same few minutes.</p>
+    </div>
+    <div class="build">
+      <h3>Study tools</h3>
+      <p>An <strong>Ask AI</strong> chat for doubts, a <strong>3D molecule viewer</strong> (benzene to proteins, rotate and zoom in the browser), and embedded <strong>PhET simulations</strong> from the University of Colorado Boulder.</p>
     </div>
     <div class="build">
       <h3>PDF-to-test pipeline</h3>
-      <p>Coaching institutes hand me question papers as PDFs, not structured data. I don't extract anything locally — the pages go straight to an AI API, which hands back the text, diagrams, and tables already structured into gradable questions. Cuts what used to be hours of manual entry per test down to a review pass.</p>
+      <p>Question-paper PDFs go to an AI API and come back as structured, gradable questions — hours of typing reduced to a review pass.</p>
     </div>
     <div class="build">
-      <h3>Anti-cheating system</h3>
-      <p>Exams run in enforced fullscreen; the client watches for tab switches, lost window focus, and fullscreen exits, and logs each one as a violation in real time. Three violations auto-submits the exam and pushes a live alert straight to the admin dashboard over a websocket, while progress and violation counts survive a refresh so a genuine accidental exit doesn't cost a student their answers.</p>
-    </div>
-    <div class="build">
-      <h3>Real-time infrastructure</h3>
-      <p>Live leaderboards, moderated exam-day chat, and push notifications all run over Socket.IO. Underneath, student, test, and result data live on DynamoDB rather than MongoDB specifically because it holds up better under the bursty read/write pattern of an exam window, after I hit the limits of what a single-instance MongoDB setup could take under load.</p>
+      <h3>Anti-cheating &amp; real-time</h3>
+      <p>Fullscreen enforcement with auto-submit after three violations and live admin alerts, plus Socket.IO leaderboards and chat, on DynamoDB for bursty exam-time load.</p>
     </div>
   </section>
 
@@ -205,7 +207,7 @@
   </section>
 
   <footer>
-    I'm glad to walk through any part of this in more detail — the code, the architecture decisions, or the numbers above. Email me at <a href="mailto:devesh@aitts.in">devesh@aitts.in</a>.
+    Happy to walk through any of it — email me at <a href="mailto:devesh@aitts.in">devesh@aitts.in</a>.
   </footer>
 
 </div>
@@ -228,6 +230,7 @@
     <img id="cur-profile" class="cur-thumb" alt="">
     <input type="file" id="file-profile" accept="image/*">
     <button onclick="doUpload('profile')">Upload</button>
+    <button type="button" class="btn-del" onclick="doDelete('profile')">Delete</button>
   </div>
 
   <div class="fg">
@@ -235,6 +238,7 @@
     <img id="cur-sc" class="cur-thumb" alt="">
     <input type="file" id="file-sc" accept="image/*">
     <button onclick="doUpload('searchconsole')">Upload</button>
+    <button type="button" class="btn-del" onclick="doDelete('searchconsole')">Delete</button>
   </div>
 
   <p id="upload-status"></p>
@@ -296,6 +300,23 @@
         loadCurrentThumbs();
       })
       .catch(function(){ status.textContent = 'Upload failed.'; });
+  };
+
+  window.doDelete = function(type){
+    var key = document.getElementById('upload-key').value;
+    var status = document.getElementById('upload-status');
+    if (!key) { status.textContent = 'Enter the upload key first.'; return; }
+    if (!confirm('Delete the current ' + (type === 'profile' ? 'profile photo' : 'Search Console screenshot') + '?')) return;
+    status.textContent = 'Deleting...';
+    fetch('/api/about-page/image?type=' + encodeURIComponent(type), { method:'DELETE', headers:{ 'x-upload-key':key } })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.error) { status.textContent = d.error; return; }
+        status.textContent = 'Deleted.';
+        var el = document.getElementById(type === 'profile' ? 'cur-profile' : 'cur-sc');
+        el.removeAttribute('src'); el.style.display = 'none';
+      })
+      .catch(function(){ status.textContent = 'Delete failed.'; });
   };
 
   function initUploadMode(){

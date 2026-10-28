@@ -503,7 +503,6 @@ textarea{resize:vertical}
     <div class="auth-panel-right">
       <button class="back-btn" onclick="showPage('page-home')"><i class="fas fa-arrow-left"></i> Back</button>
       <h2 class="auth-title">Create Account</h2>
-      <p class="auth-sub">Register instantly — no OTP needed</p>
       <div class="email-warning-box"><i class="fas fa-exclamation-triangle"></i> <strong>Use your real email.</strong> It is your only way to reset your password if you forget it. A wrong email means permanent account lockout.</div>
       <form id="register-form" onsubmit="handleRegister(event)">
         <div class="reg-grid">
@@ -514,7 +513,7 @@ textarea{resize:vertical}
           <div class="fg"><label>Coaching Name *</label><input type="text" id="reg-coaching" placeholder="Your institute" required></div>
           <div class="fg"><label>Father Name *</label><input type="text" id="reg-father" placeholder="Father full name" required></div>
           <div class="fg fg-full"><label>Father Occupation *</label><input type="text" id="reg-occupation" placeholder="e.g. Farmer, Business, Service" required></div>
-          <div class="fg fg-full"><label>City / State <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label><input type="text" id="reg-city" maxlength="80" placeholder="e.g. Agra, Uttar Pradesh"></div>
+          <div class="fg fg-full"><label>City / State</label><input type="text" id="reg-city" maxlength="80" placeholder="e.g. Agra, Uttar Pradesh"></div>
           <div class="fg fg-full">
             <label>Password *</label>
             <div class="pw-wrap"><input type="password" id="reg-password" placeholder="Min 6 characters" required minlength="6"><button type="button" class="pw-toggle" onclick="togglePw('reg-password',this)"><i class="fas fa-eye"></i></button></div>
